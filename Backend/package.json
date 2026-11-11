@@ -1,24 +1,56 @@
 {
-  "name": "backend",
-  "version": "1.0.0",
-  "main": "server.js",
-  "scripts": {
-    "test": "echo \"Error: no test specified\" && exit 1"
-  },
-  "keywords": [],
-  "author": "",
-  "license": "ISC",
-  "description": "",
-  "dependencies": {
-    "axios": "^1.7.7",
-    "bcrypt": "^5.1.1",
-    "cookie-parser": "^1.4.7",
-    "cors": "^2.8.5",
-    "dotenv": "^16.4.5",
-    "express": "^4.21.1",
-    "express-validator": "^7.2.0",
-    "jsonwebtoken": "^9.0.2",
-    "mongoose": "^8.8.2",
-    "socket.io": "^4.8.4"
-  }
+    "name": "rideshare",
+    "version": "1.0.0",
+    "private": true,
+    "description": "Node.js ride-sharing platform: User app (riders + drivers), Admin app and core API with OAuth sign-in.",
+    "scripts": {
+        "dev": "node scripts/dev.ts",
+        "start": "node scripts/dev.ts",
+        "db:migrate": "node scripts/migrate.ts",
+        "db:reset": "node scripts/reset.ts && node scripts/seed.ts",
+        "seed": "node scripts/seed.ts",
+        "test": "node --test --test-isolation=none \"tests/**/*.test.ts\"",
+        "test:coverage": "node --test --test-isolation=none --experimental-test-coverage --test-coverage-include=\"lib/**\" --test-coverage-include=\"services/**\" --test-coverage-include=\"db/**\" --test-coverage-include=\"backend/src/**\" --test-coverage-lines=80 \"tests/**/*.test.ts\"",
+        "typecheck": "tsc -p tsconfig.json",
+        "lint": "eslint .",
+        "format": "prettier --write .",
+        "format:check": "prettier --check .",
+        "check": "npm run typecheck && npm run lint && npm run test:coverage"
+    },
+    "engines": {
+        "node": ">=22.18"
+    },
+    "dependencies": {
+        "@asteasolutions/zod-to-openapi": "^9.1.0",
+        "dotenv": "^18.0.6",
+        "ejs": "^3.1.10",
+        "express": "^5.2.1",
+        "express-session": "^1.18.2",
+        "multer": "^2.4.0",
+        "openid-client": "^6.8.1",
+        "swagger-ui-express": "^5.0.1",
+        "ws": "^8.18.3",
+        "zod": "^4.6.5"
+    },
+    "devDependencies": {
+        "@eslint/js": "^10.0.1",
+        "@types/ejs": "^3.1.5",
+        "@types/express": "^5.0.6",
+        "@types/express-session": "^1.19.0",
+        "@types/multer": "^2.3.0",
+        "@types/node": "^24.19.2",
+        "@types/swagger-ui-express": "^4.1.8",
+        "@types/ws": "^8.18.2",
+        "eslint": "^10.13.0",
+        "prettier": "^3.9.10",
+        "typescript": "~6.0.3",
+        "typescript-eslint": "^8.72.0"
+    },
+    "prettier": {
+        "printWidth": 140,
+        "tabWidth": 4,
+        "trailingComma": "none",
+        "arrowParens": "always"
+    },
+    "type": "module"
 }

@@ -1,0 +1,39 @@
+<%- include("partials/head", { wide: true }) %>
+<div class="page-head">
+    <h1><%= status === "pending" ? "Driver verification" : "Drivers" %></h1>
+</div>
+
+<div class="filters">
+    <% for (const [value, label] of [["", "All"], ["pending", "Pending"], ["approved", "Approved"], ["rejected", "Rejected"]]) { %>
+    <a class="btn btn-sm <%= status === value ? "" : "btn-ghost" %>" href="/drivers<%= value ? "?status=" + value : "" %>"><%= label %></a>
+    <% } %>
+</div>
+
+<section class="card">
+    <% if (!drivers.length) { %>
+    <p class="empty"><%= status === "pending" ? "No drivers are waiting for verification." : "No drivers found." %></p>
+    <% } else { %>
+    <div class="table-wrap">
+    <table>
+        <thead><tr><th>Driver</th><th>Vehicle</th><th>Licence</th><th>Submitted</th><th>Status</th><th></th></tr></thead>
+        <tbody>
+        <% for (const driver of drivers) { %>
+        <tr>
+            <td><a href="/drivers/<%= driver.user_id %>"><%= driver.name %></a><br><span class="muted small"><%= driver.phone %></span></td>
+            <td><%= h.vehicleLabel(driver.vehicle_type) %> · <%= driver.vehicle_make %> <%= driver.vehicle_model %><br><span class="mono small"><%= driver.vehicle_plate %></span></td>
+            <td class="mono small"><%= driver.license_number %></td>
+            <td class="muted small"><%= h.dateTime(driver.submitted_at) %></td>
+            <td>
+                <span class="badge badge-<%= driver.verification_status %>"><%= driver.verification_status %></span>
+                <% if (driver.is_online) { %><span class="badge badge-online">online</span><% } %>
+                <% if (driver.user_status === "suspended") { %><span class="badge badge-suspended">suspended</span><% } %>
+            </td>
+            <td class="right"><a class="btn btn-sm <%= driver.verification_status === "pending" ? "" : "btn-ghost" %>" href="/drivers/<%= driver.user_id %>"><%= driver.verification_status === "pending" ? "Review" : "View" %></a></td>
+        </tr>
+        <% } %>
+        </tbody>
+    </table>
+    </div>
+    <% } %>
+</section>
+<%- include("partials/foot") %>

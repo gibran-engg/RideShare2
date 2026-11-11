@@ -1,0 +1,53 @@
+<%- include("partials/head", { wide: true }) %>
+<div class="page-head"><h1>Users</h1></div>
+
+<form class="search" method="get" action="/users">
+    <input type="search" name="q" value="<%= search %>" placeholder="Search name, email or phone" aria-label="Search users">
+    <select name="role" aria-label="Role" data-autosubmit>
+        <option value="">All roles</option>
+        <option value="rider" <%= role === "rider" ? "selected" : "" %>>Riders</option>
+        <option value="driver" <%= role === "driver" ? "selected" : "" %>>Drivers</option>
+    </select>
+    <button class="btn btn-ghost" type="submit">Search</button>
+</form>
+
+<section class="card">
+    <% if (!users.length) { %>
+    <p class="empty">No users match.</p>
+    <% } else { %>
+    <div class="table-wrap">
+    <table>
+        <thead><tr><th>User</th><th>Phone</th><th>Role</th><th>Rides</th><th>Joined</th><th>Status</th><th></th></tr></thead>
+        <tbody>
+        <% for (const user of users) { %>
+        <tr>
+            <td>
+                <a href="/users/<%= user.id %>"><strong><%= user.name || "(no name)" %></strong></a>
+                <br><span class="muted small"><%= user.email %></span>
+            </td>
+            <td class="small"><%= user.phone || "-" %><% if (user.phone && !user.phone_verified) { %> <span class="badge badge-pending">unverified</span><% } %></td>
+            <td>
+                <%= user.role || "-" %>
+                <% if (user.verification_status) { %><br><span class="badge badge-<%= user.verification_status %>"><%= user.verification_status %></span><% } %>
+                <% if (!user.onboarding_complete && user.role) { %><br><span class="badge">onboarding</span><% } %>
+            </td>
+            <td><%= user.ride_count %></td>
+            <td class="muted small"><%= h.dateTime(user.created_at) %></td>
+            <td><span class="badge badge-<%= user.status %>"><%= user.status %></span></td>
+            <td class="right">
+                <% if (user.id !== currentUser.id) { %>
+                <form class="inline-form" method="post" action="/users/<%= user.id %>/status" data-confirm="<%= user.status === "active" ? "Suspend " + (user.name || user.email) + "? They will be signed out." : "Reinstate " + (user.name || user.email) + "?" %>">
+                    <input type="hidden" name="_csrf" value="<%= csrfToken %>">
+                    <input type="hidden" name="status" value="<%= user.status === "active" ? "suspended" : "active" %>">
+                    <button class="btn btn-sm <%= user.status === "active" ? "btn-ghost" : "" %>" type="submit"><%= user.status === "active" ? "Suspend" : "Reinstate" %></button>
+                </form>
+                <% } %>
+            </td>
+        </tr>
+        <% } %>
+        </tbody>
+    </table>
+    </div>
+    <% } %>
+</section>
+<%- include("partials/foot") %>

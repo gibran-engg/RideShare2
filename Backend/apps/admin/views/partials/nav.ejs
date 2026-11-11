@@ -1,0 +1,9 @@
+<% if (currentUser) { %>
+<nav class="nav" aria-label="Admin">
+    <% for (const [href, label] of [["/", "Overview"], ["/drivers?status=pending", "Verification"], ["/drivers", "Drivers"], ["/users", "Users"], ["/rides", "Rides"], ["/payments", "Payments"], ["/messages", "SMS log"], ["/audit", "Audit"]]) { %>
+    <% const base = href.split("?")[0]; const isActive = base === "/" ? path === "/" : path.startsWith(base) && (href.includes("?") === (typeof status !== "undefined" && status === "pending")); %>
+    <a href="<%= href %>" class="<%= isActive ? "active" : "" %>"><%= label %></a>
+    <% } %>
+</nav>
+<%- include("partials/user-menu") %>
+<% } %>

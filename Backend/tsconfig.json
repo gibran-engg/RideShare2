@@ -1,0 +1,23 @@
+{
+    // Type-check only: Node runs the .ts files directly (type stripping), so there is no build step.
+    "compilerOptions": {
+        "target": "es2023",
+        "lib": ["es2023"],
+        "module": "nodenext",
+        "moduleResolution": "nodenext",
+        "types": ["node"],
+        "strict": true,
+        "noEmit": true,
+        "allowImportingTsExtensions": true,
+        "erasableSyntaxOnly": true,
+        "verbatimModuleSyntax": true,
+        "isolatedModules": true,
+        "noUncheckedIndexedAccess": false,
+        "noFallthroughCasesInSwitch": true,
+        "noImplicitOverride": true,
+        "resolveJsonModule": true,
+        "skipLibCheck": true
+    },
+    "include": ["lib", "services", "db", "backend", "apps/admin", "mock-oauth", "scripts", "tests"],
+    "exclude": ["node_modules", "mobile", "**/node_modules"]
+}

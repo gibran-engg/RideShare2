@@ -1,0 +1,62 @@
+<%- include("partials/head", { wide: true }) %>
+<div class="page-head">
+    <div>
+        <p class="eyebrow">Platform overview</p>
+        <h1>Good to see you, <%= (currentUser.name || "admin").split(" ")[0] %></h1>
+    </div>
+</div>
+
+<div class="stats">
+    <div class="stat"><div class="stat-label">Active rides</div><div class="stat-value"><%= stats.activeRides %></div><div class="stat-sub"><%= stats.ridesToday %> requested today</div></div>
+    <div class="stat"><div class="stat-label">Drivers online</div><div class="stat-value"><%= stats.onlineDrivers %></div><div class="stat-sub">of <%= stats.drivers %> approved</div></div>
+    <div class="stat"><div class="stat-label">Pending verification</div><div class="stat-value"><%= stats.pendingDrivers %></div><div class="stat-sub"><a href="/drivers?status=pending">Review now</a></div></div>
+    <div class="stat"><div class="stat-label">Riders</div><div class="stat-value"><%= stats.riders %></div><div class="stat-sub"><%= stats.users %> accounts total</div></div>
+    <div class="stat"><div class="stat-label">Fares completed</div><div class="stat-value"><%= h.money(stats.fares) %></div><div class="stat-sub"><%= stats.completedRides %> completed rides</div></div>
+    <div class="stat"><div class="stat-label">Payments received</div><div class="stat-value"><%= h.money(stats.paymentsReceived) %></div><div class="stat-sub"><%= h.money(stats.paymentsPending) %> awaiting · <a href="/payments">details</a></div></div>
+</div>
+
+<div class="grid grid-2">
+    <section class="card">
+        <div class="card-head">
+            <h2>Waiting for verification</h2>
+            <a class="btn btn-ghost btn-sm" href="/drivers?status=pending">All</a>
+        </div>
+        <% if (!pending.length) { %>
+        <p class="empty">No drivers waiting. 🎉</p>
+        <% } else { %>
+        <div class="table-wrap"><table>
+            <tbody>
+            <% for (const driver of pending) { %>
+            <tr>
+                <td><a href="/drivers/<%= driver.user_id %>"><%= driver.name %></a><br><span class="muted small"><%= driver.email %></span></td>
+                <td><%= h.vehicleLabel(driver.vehicle_type) %><br><span class="mono small"><%= driver.vehicle_plate %></span></td>
+                <td class="muted small"><%= h.dateTime(driver.submitted_at) %></td>
+            </tr>
+            <% } %>
+            </tbody>
+        </table></div>
+        <% } %>
+    </section>
+
+    <section class="card">
+        <div class="card-head">
+            <h2>Live rides</h2>
+            <a class="btn btn-ghost btn-sm" href="/rides">All rides</a>
+        </div>
+        <% if (!activeRides.length) { %>
+        <p class="empty">No rides in progress.</p>
+        <% } else { %>
+        <%- include("partials/ride-table", { rides: activeRides, compact: true }) %>
+        <% } %>
+    </section>
+</div>
+
+<section class="card mt">
+    <h2>Latest rides</h2>
+    <% if (!recent.length) { %>
+    <p class="empty">No rides yet.</p>
+    <% } else { %>
+    <%- include("partials/ride-table", { rides: recent, compact: false }) %>
+    <% } %>
+</section>
+<%- include("partials/foot") %>

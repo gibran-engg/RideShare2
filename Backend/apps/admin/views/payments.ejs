@@ -1,0 +1,25 @@
+<%- include("partials/head", { wide: true }) %>
+<div class="page-head">
+    <div>
+        <p class="eyebrow">Test mode gateway</p>
+        <h1>Payments</h1>
+    </div>
+</div>
+
+<div class="stats">
+    <div class="stat"><div class="stat-label">Received</div><div class="stat-value"><%= h.money(stats.paymentsReceived) %></div><div class="stat-sub"><%= h.money(stats.cashCollected) %> in cash</div></div>
+    <div class="stat"><div class="stat-label">Awaiting payment</div><div class="stat-value"><%= h.money(stats.paymentsPending) %></div><div class="stat-sub">card / UPI not yet paid</div></div>
+    <div class="stat"><div class="stat-label">Refunded</div><div class="stat-value"><%= h.money(stats.refunded) %></div><div class="stat-sub">issued by support</div></div>
+</div>
+
+<section class="card">
+    <% if (!payments.length) { %>
+    <p class="empty">No payments yet. A payment opens when a trip is completed.</p>
+    <% } else { %>
+    <%- include("partials/payment-table", { payments }) %>
+    <% } %>
+    <% if (nextCursor) { %>
+    <div class="pager"><a class="btn btn-ghost btn-sm" href="/payments?cursor=<%= nextCursor %>">Older</a></div>
+    <% } %>
+</section>
+<%- include("partials/foot") %>

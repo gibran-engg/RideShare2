@@ -1,0 +1,27 @@
+<div class="table-wrap">
+<table>
+    <thead>
+        <tr>
+            <th>Ride</th>
+            <th>Route</th>
+            <% if (!compact) { %><th>Rider</th><th>Driver</th><% } %>
+            <th>Fare</th>
+            <th>Status</th>
+        </tr>
+    </thead>
+    <tbody>
+    <% for (const ride of rides) { %>
+        <tr>
+            <td class="nowrap"><a href="/rides/<%= ride.id %>">#<%= ride.id %></a><br><span class="muted small"><%= h.dateTime(ride.requested_at) %></span></td>
+            <td><%= ride.pickup_name %> → <%= ride.drop_name %><br><span class="muted small"><%= h.vehicleLabel(ride.vehicle_type) %> · <%= ride.distance_km %> km</span></td>
+            <% if (!compact) { %>
+            <td><a href="/users/<%= ride.rider_id %>"><%= ride.rider_name %></a></td>
+            <td><% if (ride.driver_id) { %><a href="/users/<%= ride.driver_id %>"><%= ride.driver_name %></a><% } else { %>-<% } %></td>
+            <% } %>
+            <td class="nowrap"><%= h.money(ride.fare) %><br><span class="muted small"><%= ride.payment_method %><% if (ride.payment_status !== "unpaid") { %> · <%= h.paymentLabel(ride.payment_status) %><% } %></span></td>
+            <td><span class="badge badge-<%= ride.status %>"><%= h.statusLabel(ride.status) %></span></td>
+        </tr>
+    <% } %>
+    </tbody>
+</table>
+</div>

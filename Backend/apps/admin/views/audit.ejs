@@ -1,0 +1,29 @@
+<%- include("partials/head", { wide: true }) %>
+<div class="page-head"><h1>Audit log</h1></div>
+<section class="card">
+    <% if (!entries.length) { %>
+    <p class="empty">Nothing logged yet.</p>
+    <% } else { %>
+    <div class="table-wrap">
+    <table>
+        <thead><tr><th>When</th><th>Who</th><th>Action</th><th>Target</th><th>Details</th></tr></thead>
+        <tbody>
+        <% for (const entry of entries) { %>
+        <tr>
+            <td class="muted small nowrap"><%= h.dateTime(entry.created_at) %></td>
+            <td><%= entry.actor_name || entry.actor_email || "-" %></td>
+            <td class="mono small"><%= entry.action %></td>
+            <td class="small">
+                <% if (entry.target_type === "driver") { %><a href="/drivers/<%= entry.target_id %>">driver #<%= entry.target_id %></a>
+                <% } else if (entry.target_type === "ride") { %><a href="/rides/<%= entry.target_id %>">ride #<%= entry.target_id %></a>
+                <% } else if (entry.target_type) { %><%= entry.target_type %> #<%= entry.target_id %><% } %>
+            </td>
+            <td class="small muted"><%= entry.details && entry.details !== "{}" ? entry.details : "" %></td>
+        </tr>
+        <% } %>
+        </tbody>
+    </table>
+    </div>
+    <% } %>
+</section>
+<%- include("partials/foot") %>

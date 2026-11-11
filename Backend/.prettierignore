@@ -1,0 +1,9 @@
+node_modules
+mobile
+data
+coverage
+package-lock.json
+*.ejs
+*.md
+public
+.github

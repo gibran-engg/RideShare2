@@ -1,0 +1,28 @@
+<%- include("partials/head", { wide: true }) %>
+<div class="page-head">
+    <div>
+        <p class="eyebrow">Messaging service</p>
+        <h1>SMS log</h1>
+    </div>
+</div>
+<section class="card">
+    <% if (!messages.length) { %>
+    <p class="empty">No messages sent yet.</p>
+    <% } else { %>
+    <div class="table-wrap">
+    <table>
+        <thead><tr><th>Sent</th><th>To</th><th>Message</th></tr></thead>
+        <tbody>
+        <% for (const message of messages) { %>
+        <tr>
+            <td class="muted small nowrap"><%= h.dateTime(message.created_at) %></td>
+            <td class="nowrap"><%= message.user_name || "-" %><br><span class="muted small"><%= message.recipient %></span></td>
+            <td><%= message.message.replace(/^\d{6} is your/, "•••••• is your") %></td>
+        </tr>
+        <% } %>
+        </tbody>
+    </table>
+    </div>
+    <% } %>
+</section>
+<%- include("partials/foot") %>

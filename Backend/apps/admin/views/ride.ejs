@@ -1,0 +1,62 @@
+<%- include("partials/head", { wide: true }) %>
+<div class="page-head">
+    <div>
+        <p class="eyebrow"><a href="/rides">Rides</a> / #<%= ride.id %></p>
+        <h1><%= ride.pickup_name %> → <%= ride.drop_name %></h1>
+    </div>
+    <span class="badge badge-<%= ride.status %>"><%= h.statusLabel(ride.status) %></span>
+</div>
+
+<div class="grid grid-main">
+    <section class="card">
+        <h2>Trip</h2>
+        <dl class="details">
+            <dt>Rider</dt><dd><a href="/users/<%= ride.rider_id %>"><%= ride.rider_name %></a> · <%= ride.rider_phone %></dd>
+            <dt>Driver</dt><dd><% if (ride.driver_id) { %><a href="/users/<%= ride.driver_id %>"><%= ride.driver_name %></a> · <%= ride.driver_phone %> · <span class="mono"><%= ride.vehicle_plate %></span><% } else { %>-<% } %></dd>
+            <dt>Vehicle</dt><dd><%= h.vehicleLabel(ride.vehicle_type) %></dd>
+            <dt>Distance</dt><dd><%= ride.distance_km %> km · ~<%= ride.duration_min %> min</dd>
+            <dt>Fare</dt><dd><strong><%= h.money(ride.fare) %></strong></dd>
+            <dt>Requested</dt><dd><%= h.dateTime(ride.requested_at) %></dd>
+            <dt>Accepted</dt><dd><%= h.dateTime(ride.accepted_at) %></dd>
+            <dt>Arrived</dt><dd><%= h.dateTime(ride.arrived_at) %></dd>
+            <dt>Started</dt><dd><%= h.dateTime(ride.started_at) %></dd>
+            <dt>Completed</dt><dd><%= h.dateTime(ride.completed_at) %></dd>
+            <% if (ride.status === "cancelled") { %>
+            <dt>Cancelled</dt><dd><%= h.dateTime(ride.cancelled_at) %> by <%= ride.cancelled_by %><%= ride.cancel_reason ? ": " + ride.cancel_reason : "" %></dd>
+            <% } %>
+        </dl>
+    </section>
+
+    <aside class="stack">
+        <section class="card">
+            <h2>Payment</h2>
+            <dl class="details">
+                <dt>Method</dt><dd><%= ride.payment_method.toUpperCase() %></dd>
+                <dt>Status</dt><dd><span class="badge badge-<%= payment ? payment.status : ride.payment_status %>"><%= h.paymentLabel(payment ? payment.status : ride.payment_status) %></span></dd>
+                <% if (payment) { %>
+                <dt>Amount</dt><dd><%= h.money(payment.amount) %> via <%= payment.provider %></dd>
+                <% if (payment.paid_at) { %><dt>Paid</dt><dd><%= h.dateTime(payment.paid_at) %></dd><% } %>
+                <% if (payment.failure_reason) { %><dt>Note</dt><dd><%= payment.failure_reason %></dd><% } %>
+                <% } %>
+            </dl>
+            <% if (payment && payment.status === "succeeded") { %>
+            <form class="form mt" method="post" action="/payments/<%= payment.id %>/refund" data-confirm="Refund <%= h.money(payment.amount) %> to <%= ride.rider_name %>?">
+                <input type="hidden" name="_csrf" value="<%= csrfToken %>">
+                <label>Reason <textarea name="reason" maxlength="300" placeholder="e.g. Driver took a much longer route"></textarea></label>
+                <button class="btn btn-ghost" type="submit">Refund payment</button>
+            </form>
+            <% } %>
+        </section>
+        <% if (ride.status !== "completed" && ride.status !== "cancelled") { %>
+        <section class="card">
+            <h2>Support actions</h2>
+            <form class="form" method="post" action="/rides/<%= ride.id %>/cancel" data-confirm="Cancel ride #<%= ride.id %>? Rider and driver will be notified.">
+                <input type="hidden" name="_csrf" value="<%= csrfToken %>">
+                <label>Reason <textarea name="reason" maxlength="300" placeholder="e.g. Rider reported a safety issue"></textarea></label>
+                <button class="btn btn-danger" type="submit">Cancel ride</button>
+            </form>
+        </section>
+        <% } %>
+    </aside>
+</div>
+<%- include("partials/foot") %>

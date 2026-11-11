@@ -1,0 +1,88 @@
+<%- include("partials/head", { wide: true }) %>
+<div class="page-head">
+    <div>
+        <p class="eyebrow"><a href="/drivers">Drivers</a> / #<%= driver.user_id %></p>
+        <h1><%= driver.name %></h1>
+    </div>
+    <span class="badge badge-<%= driver.verification_status %>"><%= driver.verification_status %></span>
+</div>
+
+<div class="grid grid-main">
+    <div class="stack">
+        <section class="card">
+            <h2>Details</h2>
+            <dl class="details">
+                <dt>Email</dt><dd><%= driver.email %></dd>
+                <dt>Phone</dt><dd><%= driver.phone %></dd>
+                <dt>Licence no.</dt><dd class="mono"><%= driver.license_number %></dd>
+                <dt>Vehicle</dt><dd><%= h.vehicleLabel(driver.vehicle_type) %> · <%= [driver.vehicle_color, driver.vehicle_make, driver.vehicle_model].filter(Boolean).join(" ") %></dd>
+                <dt>Registration</dt><dd class="mono"><%= driver.vehicle_plate %></dd>
+                <dt>Submitted</dt><dd><%= h.dateTime(driver.submitted_at) %></dd>
+                <% if (driver.reviewed_at) { %>
+                <dt>Reviewed</dt><dd><%= h.dateTime(driver.reviewed_at) %> by <%= driver.reviewer_name || "admin" %></dd>
+                <% } %>
+                <% if (driver.rejection_reason) { %>
+                <dt>Reason</dt><dd><%= driver.rejection_reason %></dd>
+                <% } %>
+                <dt>Account</dt><dd><span class="badge badge-<%= driver.user_status %>"><%= driver.user_status %></span></dd>
+            </dl>
+        </section>
+
+        <section class="card">
+            <h2>Documents</h2>
+            <div class="grid grid-2">
+                <% for (const [label, file] of [["Driving licence", driver.license_doc], ["Vehicle RC", driver.rc_doc]]) { %>
+                <div>
+                    <p class="eyebrow"><%= label %></p>
+                    <% if (!file) { %>
+                    <p class="empty">Not uploaded</p>
+                    <% } else if (file.endsWith(".pdf")) { %>
+                    <a class="btn btn-ghost" href="/documents/<%= file %>" target="_blank" rel="noopener">Open PDF</a>
+                    <% } else { %>
+                    <a href="/documents/<%= file %>" target="_blank" rel="noopener"><img class="doc-preview" src="/documents/<%= file %>" alt="<%= label %> for <%= driver.name %>"></a>
+                    <% } %>
+                </div>
+                <% } %>
+            </div>
+        </section>
+
+        <% if (trips.length) { %>
+        <section class="card">
+            <h2>Recent trips</h2>
+            <%- include("partials/ride-table", { rides: trips, compact: true }) %>
+        </section>
+        <% } %>
+    </div>
+
+    <aside class="stack">
+        <% if (driver.verification_status !== "approved") { %>
+        <section class="card highlight">
+            <h2>Decision</h2>
+            <form method="post" action="/drivers/<%= driver.user_id %>/approve" data-confirm="Approve <%= driver.name %> to drive?">
+                <input type="hidden" name="_csrf" value="<%= csrfToken %>">
+                <button class="btn btn-success btn-block" type="submit">Approve driver</button>
+            </form>
+            <% if (driver.verification_status === "pending") { %>
+            <form class="form mt" method="post" action="/drivers/<%= driver.user_id %>/reject">
+                <input type="hidden" name="_csrf" value="<%= csrfToken %>">
+                <label>Reason for rejection
+                    <textarea name="reason" required maxlength="300" placeholder="e.g. Licence photo is blurry, please re-upload."></textarea>
+                    <span class="hint">Sent to the driver by SMS and shown in their app.</span>
+                </label>
+                <button class="btn btn-danger" type="submit">Request changes</button>
+            </form>
+            <% } %>
+        </section>
+        <% } else { %>
+        <section class="card">
+            <h2>Earnings</h2>
+            <dl class="details">
+                <dt>All time</dt><dd><%= h.money(earnings.total.amount) %> · <%= earnings.total.trips %> trips</dd>
+                <dt>Last 7 days</dt><dd><%= h.money(earnings.week.amount) %></dd>
+                <dt>Status</dt><dd><%= driver.is_online ? "Online" : "Offline" %></dd>
+            </dl>
+        </section>
+        <% } %>
+    </aside>
+</div>
+<%- include("partials/foot") %>

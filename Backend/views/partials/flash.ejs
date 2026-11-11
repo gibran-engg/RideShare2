@@ -1,0 +1,3 @@
+<% for (const item of (typeof flash !== "undefined" ? flash : [])) { %>
+<div class="alert alert-<%= item.type %>" role="<%= item.type === "error" ? "alert" : "status" %>"><%= item.message %></div>
+<% } %>

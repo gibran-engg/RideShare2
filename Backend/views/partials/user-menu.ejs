@@ -1,0 +1,12 @@
+<div class="user-menu">
+    <% if (currentUser.picture) { %>
+    <img class="avatar" src="<%= currentUser.picture %>" alt="" referrerpolicy="no-referrer">
+    <% } else { %>
+    <span class="avatar avatar-initials"><%= h.initials(currentUser.name || currentUser.email) %></span>
+    <% } %>
+    <span class="user-name"><%= currentUser.name || currentUser.email %></span>
+    <form method="post" action="/auth/logout">
+        <input type="hidden" name="_csrf" value="<%= csrfToken %>">
+        <button class="btn btn-ghost btn-sm" type="submit">Log out</button>
+    </form>
+</div>

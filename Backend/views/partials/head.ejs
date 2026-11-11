@@ -1,0 +1,23 @@
+<!doctype html>
+<html lang="en">
+<head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title><%= typeof title !== "undefined" ? title + " · " : "" %><%= appName %></title>
+    <link rel="icon" href="/static/favicon.svg" type="image/svg+xml">
+    <link rel="stylesheet" href="/static/styles.css">
+    <script src="/static/app.js" defer></script>
+</head>
+<body class="<%= typeof bodyClass !== "undefined" ? bodyClass : "" %>"<% if (typeof live !== "undefined" && live) { %> data-live="/events"<% } %>>
+<% if (typeof bare === "undefined" || !bare) { %>
+<header class="topbar">
+    <a class="brand" href="/">
+        <span class="brand-mark">R</span>
+        <span>ride<span class="brand-accent">share</span></span>
+        <% if (appName.includes("Admin")) { %><span class="brand-tag">admin</span><% } %>
+    </a>
+    <%- include("partials/nav") %>
+</header>
+<% } %>
+<main class="container<%= typeof wide !== "undefined" && wide ? " container-wide" : "" %>">
+<%- include("partials/flash") %>

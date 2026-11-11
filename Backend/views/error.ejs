@@ -1,0 +1,8 @@
+<%- include("partials/head", { title: "Error" }) %>
+<section class="card narrow center">
+    <p class="eyebrow">Error <%= status %></p>
+    <h1><%= status === 404 ? "Page not found" : status === 403 ? "Not allowed" : status === 429 ? "Slow down" : "Something went wrong" %></h1>
+    <p class="muted"><%= message %></p>
+    <a class="btn" href="/">Go home</a>
+</section>
+<%- include("partials/foot") %>

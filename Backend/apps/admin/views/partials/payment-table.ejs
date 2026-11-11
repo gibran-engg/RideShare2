@@ -1,0 +1,17 @@
+<div class="table-wrap">
+<table>
+    <thead><tr><th>Payment</th><th>Ride</th><th>Rider → Driver</th><th>Method</th><th>Amount</th><th>Status</th></tr></thead>
+    <tbody>
+    <% for (const payment of payments) { %>
+        <tr>
+            <td class="nowrap">#<%= payment.id %><br><span class="muted small"><%= h.dateTime(payment.created_at) %></span></td>
+            <td><a href="/rides/<%= payment.ride_id %>">#<%= payment.ride_id %></a><br><span class="muted small"><%= payment.pickup_name %> → <%= payment.drop_name %></span></td>
+            <td><a href="/users/<%= payment.rider_id %>"><%= payment.rider_name %></a> → <% if (payment.driver_id) { %><a href="/users/<%= payment.driver_id %>"><%= payment.driver_name %></a><% } else { %>-<% } %></td>
+            <td><%= payment.method.toUpperCase() %><br><span class="muted small"><%= payment.provider %></span></td>
+            <td class="nowrap"><%= h.money(payment.amount) %></td>
+            <td><span class="badge badge-<%= payment.status %>"><%= h.paymentLabel(payment.status) %></span><% if (payment.failure_reason) { %><br><span class="muted small"><%= payment.failure_reason %></span><% } %></td>
+        </tr>
+    <% } %>
+    </tbody>
+</table>
+</div>
