@@ -29,7 +29,7 @@ add(
         response: Estimate,
         errors: [403]
     },
-    ({ body }) => rides.estimate(body.pickup, body.drop)
+    ({ user, body }) => rides.estimate(body.pickup, body.drop, { riderId: user.id })
 );
 
 add(
@@ -40,7 +40,11 @@ add(
         tags,
         before: [riderOnly],
         idempotent: true,
-        body: TripBody.extend({ vehicleType: VehicleType.optional(), paymentMethod: PaymentMethod.default("cash") }),
+        body: TripBody.extend({
+            vehicleType: VehicleType.optional(),
+            paymentMethod: PaymentMethod.default("cash"),
+            quoteId: z.string().max(64).nullish().openapi({ description: "From /rides/estimate: book at the price shown" })
+        }),
         response: RideEnvelope,
         status: 201,
         errors: [403, 409, 422]
@@ -51,7 +55,8 @@ add(
             pickup: body.pickup!,
             drop: body.drop!,
             vehicleType: body.vehicleType,
-            paymentMethod: body.paymentMethod
+            paymentMethod: body.paymentMethod,
+            quoteId: body.quoteId
         });
         return { ride: toRide(ride, user.id) };
     }

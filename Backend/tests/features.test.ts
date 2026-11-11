@@ -306,3 +306,32 @@ test("Ola Maps is off without a key, and its route lines decode correctly", () =
         [43.252, -126.453]
     ]);
 });
+
+test("booking charges the quoted price; quotes are per rider and single use", async () => {
+    const rider = makeUser("rider");
+    const other = makeUser("rider");
+    // Quoted at 02:00 India time (late night ×1.3): booking keeps that price whatever the time is now.
+    const quote = await rides.estimate(GHATKOPAR, POWAI, { at: india(2, 0), riderId: rider.id });
+    assert.ok(quote.quoteId);
+    const quoted = quote.options.find((o) => o.type === "car")!;
+
+    const stolen = await rides.request(other.id, { pickup: GHATKOPAR, drop: POWAI, vehicleType: "car", quoteId: quote.quoteId });
+    assert.equal(stolen.pricing_segment, fare.segmentAt().id, "another rider's quote is ignored");
+    rides.cancel(stolen.id, { by: "rider", userId: other.id });
+
+    const ride = await rides.request(rider.id, { pickup: GHATKOPAR, drop: POWAI, vehicleType: "car", quoteId: quote.quoteId });
+    assert.equal(ride.pricing_segment, fare.segmentAt().id, "the quote was used up by the failed attempt");
+    rides.cancel(ride.id, { by: "rider", userId: rider.id });
+
+    const fresh = await rides.estimate(GHATKOPAR, POWAI, { at: india(2, 0), riderId: rider.id });
+    const booked = await rides.request(rider.id, { pickup: GHATKOPAR, drop: POWAI, vehicleType: "car", quoteId: fresh.quoteId });
+    assert.equal(booked.pricing_segment, "night");
+    assert.equal(booked.fare, fresh.options.find((o) => o.type === "car")!.fare);
+    assert.equal(quoted.breakdown.multiplier, 1.3);
+    rides.cancel(booked.id, { by: "rider", userId: rider.id });
+
+    const elsewhere = await rides.estimate(GHATKOPAR, POWAI, { at: india(2, 0), riderId: rider.id });
+    const moved = await rides.request(rider.id, { pickup: COLABA, drop: POWAI, vehicleType: "car", quoteId: elsewhere.quoteId });
+    assert.equal(moved.pricing_segment, fare.segmentAt().id, "a quote only covers the trip it was for");
+    rides.cancel(moved.id, { by: "rider", userId: rider.id });
+});

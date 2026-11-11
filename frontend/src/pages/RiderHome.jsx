@@ -145,10 +145,12 @@ export default function RiderHome() {
     try {
       const { ride: booked } = await api('/rides', {
         method: 'POST',
-        body: { pickup, drop, vehicleType, paymentMethod },
+        // The quote id books at exactly the price shown, even if traffic changes the route meanwhile.
+        body: { pickup, drop, vehicleType, paymentMethod, quoteId: estimate?.quoteId },
         idempotencyKey: bookingKey.current,
       })
       lastRideId.current = booked.id
+      setNotice(null)
       setRide(booked)
       setEstimate(null)
     } catch (err) {
@@ -335,6 +337,7 @@ export default function RiderHome() {
             </p>
           </div>
 
+          {notice && <p className="mt-3 break-all rounded-lg bg-neutral-100 px-3 py-2 text-sm">{notice}</p>}
           <ErrorText error={error} />
           {['requested', 'accepted', 'arrived'].includes(ride.status) && (
             <button className="mt-4 w-full py-2 text-sm font-medium text-red-600" onClick={() => setCancelOpen(true)}>

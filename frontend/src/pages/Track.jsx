@@ -5,11 +5,11 @@ import { useInterval } from '../lib/live'
 import { shortPlace } from '../lib/format'
 
 const STATUS_TEXT = {
-  requested: 'is looking for a driver',
+  requested: ' is looking for a driver',
   accepted: "'s driver is on the way",
   arrived: "'s driver has arrived",
-  in_progress: 'is on the way',
-  completed: 'has arrived safely',
+  in_progress: ' is on the way',
+  completed: ' has arrived safely',
   cancelled: "'s ride was cancelled",
 }
 

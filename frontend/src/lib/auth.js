@@ -122,6 +122,11 @@ export function hasSession() {
   return Boolean(storedTokens())
 }
 
+/** Forget this tab's tokens without contacting the sign-in service (they were already rejected). */
+export function forgetTokens() {
+  sessionStorage.removeItem(TOKENS_KEY)
+}
+
 async function tokenRequest(tokenEndpoint, body) {
   const res = await fetch(tokenEndpoint, {
     method: 'POST',

@@ -94,7 +94,9 @@ export default function History() {
                     {pricingBadge(ride.pricing) && <span className="ml-2 text-xs text-amber-700">{pricingBadge(ride.pricing)}</span>}
                   </p>
                 </div>
-                <p className="font-semibold">{rupees(ride.status === 'cancelled' ? ride.cancellationFee : ride.fare)}</p>
+                <p className="font-semibold">
+                  {ride.status !== 'cancelled' ? rupees(ride.fare) : ride.cancellationFee ? rupees(ride.cancellationFee) : <span className="text-sm font-normal text-neutral-500">No charge</span>}
+                </p>
               </div>
               <div className="mt-2 flex items-center gap-4 text-sm">
                 {ride.myRating && (

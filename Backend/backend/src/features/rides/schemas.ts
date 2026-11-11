@@ -109,7 +109,8 @@ export const Estimate = z.object({
             breakdown: FareBreakdown.extend({ segment: z.string(), segmentLabel: z.string() })
         })
     ),
-    pricing: Pricing
+    pricing: Pricing,
+    quoteId: z.string().nullable().openapi({ description: "Send with the booking to pay exactly these prices (valid 10 minutes)" })
 });
 
 function parseTags(value: string | null): string[] {

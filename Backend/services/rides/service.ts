@@ -67,12 +67,50 @@ export interface FareOption {
     breakdown: fare.FareQuote;
 }
 
+type Estimate = Awaited<ReturnType<typeof computeEstimate>>;
+
+/**
+ * Quotes shown to riders, so booking charges exactly the price on screen even if traffic changes
+ * the route in between. Kept on the server (the app only holds the id), single use, 10 minutes.
+ */
+const QUOTE_TTL_MS = 10 * 60 * 1000;
+const quotes = new Map<string, { riderId: number; estimate: Estimate; expiresAt: number }>();
+
+function samePlace(a: LocationInput, b: LocationInput): boolean {
+    return Math.abs(a.lat - b.lat) < 1e-6 && Math.abs(a.lng - b.lng) < 1e-6;
+}
+
 /** Route plus fare (with the current pricing segment) and ETA for every vehicle type. */
 export async function estimate(
     pickupInput: LocationInput | null | undefined,
     dropInput: LocationInput | null | undefined,
-    at: Date = new Date()
-) {
+    { at = new Date(), riderId = null }: { at?: Date; riderId?: number | null } = {}
+): Promise<Estimate & { quoteId: string | null }> {
+    const result = await computeEstimate(pickupInput, dropInput, at);
+    if (riderId == null) return { ...result, quoteId: null };
+
+    const now = Date.now();
+    for (const [id, saved] of quotes) if (saved.expiresAt <= now) quotes.delete(id);
+    if (quotes.size > 10_000) quotes.delete(quotes.keys().next().value!);
+    const quoteId = crypto.randomUUID();
+    quotes.set(quoteId, { riderId, estimate: result, expiresAt: now + QUOTE_TTL_MS });
+    return { ...result, quoteId };
+}
+
+/** The rider's own unexpired quote for exactly this trip, used once; otherwise null. */
+function takeQuote(quoteId: string | null | undefined, riderId: number, pickup: LocationInput, drop: LocationInput): Estimate | null {
+    const saved = quoteId ? quotes.get(quoteId) : undefined;
+    if (!saved) return null;
+    quotes.delete(quoteId!);
+    const usable =
+        saved.riderId === riderId &&
+        saved.expiresAt > Date.now() &&
+        samePlace(saved.estimate.pickup, pickup) &&
+        samePlace(saved.estimate.drop, drop);
+    return usable ? saved.estimate : null;
+}
+
+async function computeEstimate(pickupInput: LocationInput | null | undefined, dropInput: LocationInput | null | undefined, at: Date) {
     const { pickup, drop } = resolveTrip(pickupInput, dropInput);
     const carRoute = await geo.route(pickup, drop, "car");
     const options = fare.VEHICLE_TYPES.map((type): FareOption => {
@@ -138,6 +176,8 @@ export interface RideRequest {
     drop: LocationInput;
     vehicleType: VehicleType;
     paymentMethod?: PaymentMethod;
+    /** From the estimate the rider saw; books at that price if it's still valid. */
+    quoteId?: string | null;
 }
 
 export async function request(riderId: number, input: RideRequest): Promise<RideRow> {
@@ -145,8 +185,9 @@ export async function request(riderId: number, input: RideRequest): Promise<Ride
     if (!fare.isVehicleType(input.vehicleType)) throw new AppError("VALIDATION_FAILED", "Please choose a vehicle type.");
     const paymentMethod = input.paymentMethod ?? "cash";
 
-    // Price is always computed on the server, never taken from the app. The pricing segment is fixed now.
-    const quote = await estimate(pickup, drop);
+    // Price is always computed on the server, never taken from the app: the quote the rider was shown
+    // (kept server-side), or a fresh one if it expired. The pricing segment is fixed now.
+    const quote = takeQuote(input.quoteId, riderId, pickup, drop) ?? (await computeEstimate(pickup, drop, new Date()));
     const option = quote.options.find((item) => item.type === input.vehicleType)!;
 
     const rideId = db.transaction(() => {

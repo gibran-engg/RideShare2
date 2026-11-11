@@ -32,6 +32,7 @@ export function SessionProvider({ children }) {
 
   useEffect(() => {
     setUnauthorizedHandler(() => {
+      auth.forgetTokens()
       setMe(null)
       setStatus('signed-out')
     })
