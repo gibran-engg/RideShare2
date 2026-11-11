@@ -175,7 +175,13 @@ function VerifyStep({ me, onSaved }) {
   )
 }
 
-const today = () => new Date().toISOString().slice(0, 10)
+// Documents must still be valid tomorrow (India time), the same rule the server applies.
+function tomorrowInIndia() {
+  const today = new Intl.DateTimeFormat('en-CA', { timeZone: 'Asia/Kolkata' }).format(new Date())
+  const next = new Date(`${today}T00:00:00Z`)
+  next.setUTCDate(next.getUTCDate() + 1)
+  return next.toISOString().slice(0, 10)
+}
 
 function DriverStep({ me, onSaved }) {
   const driver = me.driver
@@ -248,7 +254,7 @@ function DriverStep({ me, onSaved }) {
       <label className="label" htmlFor="licenseExpiry">
         Valid until
       </label>
-      <input id="licenseExpiry" type="date" min={today()} className="input mb-3" value={fields.licenseExpiry} onChange={set('licenseExpiry')} required />
+      <input id="licenseExpiry" type="date" min={tomorrowInIndia()} className="input mb-3" value={fields.licenseExpiry} onChange={set('licenseExpiry')} required />
       {fileInput('licenseDoc', 'Photo of your licence')}
 
       <h2 className="mb-2 mt-6 font-semibold">Vehicle</h2>
@@ -306,7 +312,7 @@ function DriverStep({ me, onSaved }) {
       <label className="label" htmlFor="insuranceExpiry">
         Valid until
       </label>
-      <input id="insuranceExpiry" type="date" min={today()} className="input mb-3" value={fields.insuranceExpiry} onChange={set('insuranceExpiry')} required />
+      <input id="insuranceExpiry" type="date" min={tomorrowInIndia()} className="input mb-3" value={fields.insuranceExpiry} onChange={set('insuranceExpiry')} required />
       {fileInput('insuranceDoc', 'Insurance certificate')}
 
       <ErrorText error={error} />

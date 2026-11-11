@@ -335,3 +335,34 @@ test("booking charges the quoted price; quotes are per rider and single use", as
     assert.equal(moved.pricing_segment, fare.segmentAt().id, "a quote only covers the trip it was for");
     rides.cancel(moved.id, { by: "rider", userId: rider.id });
 });
+
+test("driver onboarding refuses expired licences or insurance, and needs all three documents", () => {
+    const email = `feat-onboard-${Date.now()}@example.test`;
+    const { user } = users.findOrCreateFromIdentity({ provider: "test", subject: email, email, emailVerified: true, name: "New Driver" });
+    const details = {
+        licenseNumber: "MH0120200000003",
+        vehicleType: "auto" as VehicleType,
+        vehicleMake: "Bajaj",
+        vehicleModel: "RE",
+        vehiclePlate: "MH 01 GG 1234",
+        vehicleYear: 2021,
+        licenseExpiry: "2099-01-01",
+        insuranceExpiry: "2099-01-01"
+    };
+    const docs = { licenseDoc: "l.pdf", rcDoc: "r.pdf", insuranceDoc: "i.pdf" };
+    const todayInIndia = new Intl.DateTimeFormat("en-CA", { timeZone: "Asia/Kolkata" }).format(new Date());
+
+    assert.throws(() => drivers.submit(user.id, { ...details, licenseExpiry: "2020-01-01" }, docs), /licence has expired/);
+    assert.throws(
+        () => drivers.submit(user.id, { ...details, insuranceExpiry: todayInIndia }, docs),
+        /insurance has expired/,
+        "expiring today is too late"
+    );
+    assert.throws(() => drivers.submit(user.id, details, { ...docs, insuranceDoc: null }), /licence, vehicle RC and insurance/);
+
+    const submitted = drivers.submit(user.id, details, docs);
+    assert.equal(submitted.verification_status, "pending");
+    // Resubmitting keeps documents that weren't replaced.
+    const again = drivers.submit(user.id, { ...details, vehicleColor: "Yellow" }, { insuranceDoc: "i2.pdf" });
+    assert.deepEqual([again.license_doc, again.rc_doc, again.insurance_doc], ["l.pdf", "r.pdf", "i2.pdf"]);
+});
