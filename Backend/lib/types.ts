@@ -55,6 +55,13 @@ export interface DriverRow {
     reviewed_at: string | null;
     submitted_at: string;
     is_online: number;
+    license_expiry: string | null;
+    vehicle_year: number | null;
+    insurance_doc: string | null;
+    insurance_expiry: string | null;
+    online_since: string | null;
+    online_day: string | null;
+    online_seconds_today: number;
     lat: number | null;
     lng: number | null;
     location_updated_at: string | null;
@@ -82,6 +89,16 @@ export interface RideRow {
     duration_min: number;
     fare: number;
     otp: string;
+    otp_expires_at: number | null;
+    otp_attempts: number;
+    pricing_segment: "normal" | "peak" | "night";
+    fare_multiplier: number;
+    fare_base: number | null;
+    fare_distance: number | null;
+    fare_time: number | null;
+    cancellation_fee: number;
+    sos_at: string | null;
+    share_token: string | null;
     status: RideStatus;
     cancelled_by: CancelledBy | null;
     cancel_reason: string | null;
@@ -108,6 +125,35 @@ export interface RideRow {
     driver_lng: number | null;
     // Only set on open-request lists.
     pickup_distance_km?: number;
+}
+
+export interface MessageRow {
+    id: number;
+    ride_id: number;
+    sender_id: number;
+    body: string;
+    created_at: string;
+}
+
+export interface RatingRow {
+    id: number;
+    ride_id: number;
+    rater_id: number;
+    ratee_id: number;
+    stars: number;
+    tags: string | null;
+    comment: string | null;
+    created_at: string;
+}
+
+export interface SavedPlaceRow {
+    id: number;
+    user_id: number;
+    label: string;
+    name: string;
+    lat: number;
+    lng: number;
+    created_at: string;
 }
 
 export interface PaymentRow {

@@ -66,6 +66,7 @@
         <section class="card">
             <h2><%= earnings ? "Driving" : "Riding" %></h2>
             <dl class="details">
+                <dt>Rating</dt><dd><%= rating.count ? rating.average + " ★ from " + rating.count : "No ratings yet" %></dd>
                 <% if (earnings) { %>
                 <dt>Trips</dt><dd><%= earnings.total.trips %></dd>
                 <dt>Earned</dt><dd><%= h.money(earnings.total.amount) %></dd>

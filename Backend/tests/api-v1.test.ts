@@ -31,12 +31,13 @@ async function readyDriver(vehicleType = "car"): Promise<App> {
     return driver;
 }
 
-/** Book, accept, start and complete a ride. Returns the completed ride. */
+/** Book, accept, arrive, start and complete a ride. Returns the completed ride. */
 async function completedRide(rider: App, driver: App, paymentMethod = "cash"): Promise<Json> {
     const { ride } = await rider.ok("POST", "/rides", { pickup: GHATKOPAR, drop: POWAI, vehicleType: "car", paymentMethod });
     await driver.ok("POST", `/rides/${ride.id}/accept`);
-    const { ride: accepted } = await rider.ok("GET", `/rides/${ride.id}`);
-    await driver.ok("POST", `/rides/${ride.id}/start`, { otp: accepted.otp });
+    await driver.ok("POST", `/rides/${ride.id}/arrived`);
+    const { ride: arrived } = await rider.ok("GET", `/rides/${ride.id}`);
+    await driver.ok("POST", `/rides/${ride.id}/start`, { otp: arrived.otp });
     return (await driver.ok("POST", `/rides/${ride.id}/complete`)).ride;
 }
 
@@ -295,4 +296,74 @@ test("OpenAPI document lists every v1 route, and /docs serves it", async () => {
     const docs = await fetch(`${urls.api}/docs/`);
     assert.equal(docs.status, 200);
     assert.match(await docs.text(), /swagger/i);
+});
+
+test("round 7 over HTTP: pricing in config, nearby cabs, chat, OTP on arrival, share link, rating, receipt, saved places", async () => {
+    const config = (await (await fetch(`${urls.api}/api/v1/config`)).json()) as Json;
+    assert.deepEqual(
+        config.pricing.segments.map((s: Json) => [s.id, s.multiplier]),
+        [
+            ["normal", 1],
+            ["peak", 1.5],
+            ["night", 1.3]
+        ]
+    );
+    assert.equal(config.otpMinutes, 15);
+
+    const rider = await onboard(urls.api, "rider", stamp("r7-rider"), V1);
+    const driver = await readyDriver();
+
+    const nearby = await rider.ok("GET", `/places/nearby-drivers?lat=${GHATKOPAR.lat}&lng=${GHATKOPAR.lng}`);
+    assert.ok(nearby.drivers.length >= 1);
+    assert.equal(nearby.drivers[0].name, undefined, "no names for cabs on the map");
+
+    const quote = await rider.ok("POST", "/rides/estimate", { pickup: GHATKOPAR, drop: POWAI });
+    assert.ok(["normal", "peak", "night"].includes(quote.pricing.segment));
+    assert.ok(quote.options[0].breakdown.base > 0);
+
+    const { ride } = await rider.ok("POST", "/rides", { pickup: GHATKOPAR, drop: POWAI, vehicleType: "car" });
+    assert.equal(ride.pricing.segment, quote.pricing.segment);
+    await driver.ok("POST", `/rides/${ride.id}/accept`);
+
+    await rider.ok("POST", `/rides/${ride.id}/messages`, { text: "Gate 2 please" });
+    const thread = await driver.ok("GET", `/rides/${ride.id}/messages`);
+    assert.deepEqual(
+        thread.messages.map((m: Json) => [m.body, m.mine]),
+        [["Gate 2 please", false]]
+    );
+
+    const { url } = await rider.ok("POST", `/rides/${ride.id}/share`);
+    const token = url.split("/track/")[1];
+    const shared = await fetch(`${urls.api}/api/v1/share/${token}`);
+    assert.equal(shared.status, 200, "no sign-in needed");
+    assert.equal(((await shared.json()) as Json).ride.status, "accepted");
+
+    assert.equal((await rider.call("POST", `/rides/${ride.id}/otp`)).status, 409, "no OTP before arrival");
+    await driver.ok("POST", `/rides/${ride.id}/arrived`);
+    const { ride: arrived } = await rider.ok("POST", `/rides/${ride.id}/otp`);
+    assert.match(arrived.otp, /^\d{4}$/);
+    await driver.ok("POST", `/rides/${ride.id}/start`, { otp: arrived.otp });
+    await driver.ok("POST", `/rides/${ride.id}/complete`);
+
+    const rated = await rider.ok("POST", `/rides/${ride.id}/rating`, { stars: 5, tags: ["Polite"], comment: "Great" });
+    assert.deepEqual(rated.ride.myRating, { stars: 5, tags: ["Polite"], comment: "Great" });
+    assert.equal(rated.ride.driver.rating.count >= 1, true);
+    assert.equal((await rider.call("POST", `/rides/${ride.id}/rating`, { stars: 4 })).status, 409, "once only");
+
+    const { receipt } = await rider.ok("GET", `/rides/${ride.id}/receipt`);
+    assert.equal(receipt.total, ride.fare);
+    assert.match(receipt.number, /^RS-\d{6}$/);
+
+    await rider.ok("POST", "/me/places", { label: "Home", ...GHATKOPAR });
+    const { places } = await rider.ok("GET", "/me/places");
+    assert.deepEqual(
+        places.map((p: Json) => p.label),
+        ["Home"]
+    );
+    await rider.ok("POST", `/me/places/${places[0].id}/delete`);
+    assert.equal((await rider.ok("GET", "/me/places")).places.length, 0);
+
+    const stats = await driver.ok("GET", "/driver/earnings");
+    assert.equal(typeof stats.hoursOnlineToday, "number");
+    assert.equal(stats.rating.count >= 1, true);
 });

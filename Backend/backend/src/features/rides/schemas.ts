@@ -1,5 +1,7 @@
 import { z } from "zod";
 import * as rideState from "../../../../services/rides/state.ts";
+import * as fare from "../../../../services/rides/fare.ts";
+import * as ratings from "../../../../services/ratings/repository.ts";
 import type { RideRow } from "../../../../lib/types.ts";
 import { registry } from "../../core/openapi.ts";
 import { PaymentMethod, VehicleType } from "../../core/schemas.ts";
@@ -18,6 +20,28 @@ export const TripBody = z.object({ pickup: Location.nullish(), drop: Location.nu
 const Point = z.object({ lat: z.number(), lng: z.number() });
 const Stop = Point.extend({ name: z.string() });
 
+const RatingSummary = z.object({ average: z.number().nullable(), count: z.number() });
+
+export const Pricing = registry.register(
+    "Pricing",
+    z.object({
+        segment: z.enum(["normal", "peak", "night"]),
+        label: z.string().openapi({ example: "Peak hours" }),
+        multiplier: z.number().openapi({ example: 1.5 })
+    })
+);
+
+const FareBreakdown = z.object({
+    base: z.number(),
+    distanceCharge: z.number(),
+    timeCharge: z.number(),
+    multiplier: z.number(),
+    minimumApplied: z.boolean().optional(),
+    fare: z.number()
+});
+
+export const MyRating = z.object({ stars: z.number(), tags: z.array(z.string()), comment: z.string().nullable() });
+
 export const Ride = registry.register(
     "Ride",
     z.object({
@@ -31,11 +55,15 @@ export const Ride = registry.register(
         distanceKm: z.number(),
         durationMin: z.number(),
         fare: z.number(),
+        pricing: Pricing,
+        fareBreakdown: FareBreakdown.nullable(),
+        cancellationFee: z.number(),
         paymentMethod: PaymentMethod,
         paymentStatus: z.enum(["unpaid", "pending", "paid", "failed", "refunded"]),
         route: z.array(z.tuple([z.number(), z.number()])).nullable(),
-        otp: z.string().nullable().openapi({ description: "Only for the rider, until the trip starts" }),
-        rider: z.object({ name: z.string().nullable(), phone: z.string().nullable() }),
+        otp: z.string().nullable().openapi({ description: "Only for the rider, after the driver arrives, until it expires" }),
+        otpExpiresAt: z.string().nullable(),
+        rider: z.object({ name: z.string().nullable(), phone: z.string().nullable(), rating: RatingSummary }),
         driver: z
             .object({
                 name: z.string().nullable(),
@@ -46,9 +74,12 @@ export const Ride = registry.register(
                     plate: z.string().nullable(),
                     color: z.string().nullable()
                 }),
-                location: Point.nullable()
+                location: Point.nullable(),
+                rating: RatingSummary
             })
             .nullable(),
+        myRating: MyRating.nullable().openapi({ description: "The viewer's rating of this ride, once given" }),
+        sosAt: z.string().nullable(),
         pickupDistanceKm: z.number().optional(),
         cancelledBy: z.string().nullable(),
         cancelReason: z.string().nullable(),
@@ -74,10 +105,20 @@ export const Estimate = z.object({
             seats: z.number(),
             distanceKm: z.number(),
             durationMin: z.number(),
-            fare: z.number()
+            fare: z.number(),
+            breakdown: FareBreakdown.extend({ segment: z.string(), segmentLabel: z.string() })
         })
-    )
+    ),
+    pricing: Pricing
 });
+
+function parseTags(value: string | null): string[] {
+    try {
+        return value ? (JSON.parse(value) as string[]) : [];
+    } catch {
+        return [];
+    }
+}
 
 function parseRoute(value: string | null): [number, number][] | null {
     try {
@@ -95,6 +136,9 @@ export function toRide(row: RideRow | null, viewerId: number) {
     if (!row) return null;
     const isRider = row.rider_id === viewerId;
     const active = rideState.isActive(row.status);
+    const showOtp =
+        isRider && row.status === "arrived" && Boolean(row.otp) && row.otp_expires_at != null && row.otp_expires_at > Date.now();
+    const myRating = row.status === "completed" ? ratings.byRater(row.id, viewerId) : null;
     return {
         id: row.id,
         status: row.status,
@@ -109,8 +153,26 @@ export function toRide(row: RideRow | null, viewerId: number) {
         paymentMethod: row.payment_method,
         paymentStatus: row.payment_status,
         route: parseRoute(row.route_geometry),
-        otp: isRider && (row.status === "accepted" || row.status === "arrived") ? row.otp : null,
-        rider: { name: row.rider_name, phone: !isRider && active ? row.rider_phone : null },
+        pricing: {
+            segment: row.pricing_segment,
+            label: fare.PRICING_SEGMENTS[row.pricing_segment]?.label ?? "Normal",
+            multiplier: row.fare_multiplier
+        },
+        fareBreakdown:
+            row.fare_base == null
+                ? null
+                : {
+                      base: row.fare_base,
+                      distanceCharge: row.fare_distance ?? 0,
+                      timeCharge: row.fare_time ?? 0,
+                      multiplier: row.fare_multiplier,
+                      fare: row.fare
+                  },
+        cancellationFee: row.cancellation_fee,
+        // The OTP exists only once the driver has arrived, and only the rider ever sees it.
+        otp: showOtp ? row.otp : null,
+        otpExpiresAt: showOtp ? new Date(row.otp_expires_at!).toISOString() : null,
+        rider: { name: row.rider_name, phone: !isRider && active ? row.rider_phone : null, rating: ratings.summary(row.rider_id) },
         driver: row.driver_id
             ? {
                   name: row.driver_name,
@@ -119,9 +181,12 @@ export function toRide(row: RideRow | null, viewerId: number) {
                   location:
                       isRider && active && row.driver_lat != null && row.driver_lng != null
                           ? { lat: row.driver_lat, lng: row.driver_lng }
-                          : null
+                          : null,
+                  rating: ratings.summary(row.driver_id)
               }
             : null,
+        myRating: myRating ? { stars: myRating.stars, tags: parseTags(myRating.tags), comment: myRating.comment } : null,
+        sosAt: row.sos_at,
         pickupDistanceKm: row.pickup_distance_km,
         cancelledBy: row.cancelled_by,
         cancelReason: row.cancel_reason,

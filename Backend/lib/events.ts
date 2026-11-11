@@ -32,7 +32,12 @@ export interface DomainEvents {
     "ride.started": RideRef;
     "ride.completed": RideRef & { fare: number };
     "ride.released": RideRef & { previousDriverId: number };
-    "ride.cancelled": RideRef & { by: string; reason: string | null };
+    "ride.cancelled": RideRef & { by: string; reason: string | null; fee: number };
+    "ride.otp_issued": RideRef;
+    "ride.message": RideRef & { messageId: number };
+    "ride.rated": RideRef & { stars: number; rateeId: number };
+    "ride.sos": RideRef;
+    "ride.shared": RideRef;
     "payment.updated": {
         paymentId: number;
         rideId: number;

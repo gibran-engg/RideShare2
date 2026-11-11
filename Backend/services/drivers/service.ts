@@ -11,19 +11,32 @@ export type { DriverSubmission };
 export const get = repo.get;
 export const list = repo.list;
 
-/** Create or resubmit a driver's licence, vehicle and documents for verification. */
-export function submit(userId: number, data: DriverSubmission, docs: { licenseDoc?: string | null; rcDoc?: string | null }): DriverRow {
+/** Today in India as YYYY-MM-DD, for comparing document expiry dates. */
+function indiaToday(): string {
+    return new Intl.DateTimeFormat("en-CA", { timeZone: "Asia/Kolkata" }).format(new Date());
+}
+
+type Uploads = { licenseDoc?: string | null; rcDoc?: string | null; insuranceDoc?: string | null };
+
+/** Create or resubmit a driver's licence, vehicle, insurance and documents for verification. */
+export function submit(userId: number, data: DriverSubmission, docs: Uploads): DriverRow {
     const existing = repo.get(userId);
     if (existing && existing.verification_status === "approved") {
         throw new AppError("CONFLICT", "Your driver profile is already approved.");
     }
-    const licenseDoc = docs.licenseDoc || existing?.license_doc;
-    const rcDoc = docs.rcDoc || existing?.rc_doc;
-    if (!licenseDoc || !rcDoc) {
-        throw new AppError("VALIDATION_FAILED", "Please upload both your driving licence and vehicle RC.");
+    if (data.licenseExpiry <= indiaToday()) throw new AppError("VALIDATION_FAILED", "Your driving licence has expired. Renew it first.");
+    if (data.insuranceExpiry <= indiaToday()) {
+        throw new AppError("VALIDATION_FAILED", "Your vehicle insurance has expired. Renew it first.");
     }
 
-    repo.upsert(userId, data, licenseDoc, rcDoc);
+    const licenseDoc = docs.licenseDoc || existing?.license_doc;
+    const rcDoc = docs.rcDoc || existing?.rc_doc;
+    const insuranceDoc = docs.insuranceDoc || existing?.insurance_doc;
+    if (!licenseDoc || !rcDoc || !insuranceDoc) {
+        throw new AppError("VALIDATION_FAILED", "Please upload your driving licence, vehicle RC and insurance.");
+    }
+
+    repo.upsert(userId, data, { licenseDoc, rcDoc, insuranceDoc });
     audit.log(userId, "driver.submit", "driver", userId);
     bus.emit("driver.submitted", { userId });
     return repo.get(userId)!;
@@ -43,6 +56,18 @@ export function setLocation(userId: number, point: Point): void {
     if (!geo.isPoint(point)) throw new AppError("VALIDATION_FAILED", "Invalid location.");
     repo.setLocation(userId, point.lat, point.lng);
     bus.emit("driver.location_updated", { userId });
+}
+
+export const secondsOnlineToday = repo.secondsOnlineToday;
+
+/** Online drivers within `radiusKm` of a point, nearest first: what a rider sees as "cabs nearby". */
+export function onlineNear(point: Point, radiusKm: number): (DriverRow & { distance_km: number })[] {
+    if (!geo.isPoint(point)) throw new AppError("VALIDATION_FAILED", "Invalid location.");
+    return repo
+        .onlineWithLocation()
+        .map((driver) => ({ ...driver, distance_km: Math.round(geo.haversineKm(point, { lat: driver.lat!, lng: driver.lng! }) * 10) / 10 }))
+        .filter((driver) => driver.distance_km <= radiusKm)
+        .sort((a, b) => a.distance_km - b.distance_km);
 }
 
 export function setOnline(userId: number, online: boolean): DriverRow {

@@ -15,8 +15,10 @@
                 <dt>Email</dt><dd><%= driver.email %></dd>
                 <dt>Phone</dt><dd><%= driver.phone %></dd>
                 <dt>Licence no.</dt><dd class="mono"><%= driver.license_number %></dd>
-                <dt>Vehicle</dt><dd><%= h.vehicleLabel(driver.vehicle_type) %> · <%= [driver.vehicle_color, driver.vehicle_make, driver.vehicle_model].filter(Boolean).join(" ") %></dd>
+                <dt>Licence expires</dt><dd><%= driver.license_expiry || "-" %></dd>
+                <dt>Vehicle</dt><dd><%= h.vehicleLabel(driver.vehicle_type) %> · <%= [driver.vehicle_color, driver.vehicle_make, driver.vehicle_model].filter(Boolean).join(" ") %><%= driver.vehicle_year ? " (" + driver.vehicle_year + ")" : "" %></dd>
                 <dt>Registration</dt><dd class="mono"><%= driver.vehicle_plate %></dd>
+                <dt>Insurance expires</dt><dd><%= driver.insurance_expiry || "-" %></dd>
                 <dt>Submitted</dt><dd><%= h.dateTime(driver.submitted_at) %></dd>
                 <% if (driver.reviewed_at) { %>
                 <dt>Reviewed</dt><dd><%= h.dateTime(driver.reviewed_at) %> by <%= driver.reviewer_name || "admin" %></dd>
@@ -31,7 +33,7 @@
         <section class="card">
             <h2>Documents</h2>
             <div class="grid grid-2">
-                <% for (const [label, file] of [["Driving licence", driver.license_doc], ["Vehicle RC", driver.rc_doc]]) { %>
+                <% for (const [label, file] of [["Driving licence", driver.license_doc], ["Vehicle RC", driver.rc_doc], ["Insurance", driver.insurance_doc]]) { %>
                 <div>
                     <p class="eyebrow"><%= label %></p>
                     <% if (!file) { %>

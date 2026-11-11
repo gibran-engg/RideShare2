@@ -24,7 +24,8 @@ if (!process.env.RIDESHARE_TEST_DIR) {
         AUTH0_ADMIN_CLIENT_ID: "",
         AUTH0_ADMIN_CLIENT_SECRET: "",
         MAPTILER_KEY: "",
-        // Never call the public OSM servers from tests; routing falls back to an estimate.
+        // Never call Ola Maps or the public OSM servers from tests; routing falls back to an estimate.
+        OLA_MAPS_API_KEY: "",
         OSRM_URL: "http://127.0.0.1:9",
         NOMINATIM_URL: "http://127.0.0.1:9",
         DEV_HOST: "127.0.0.1",

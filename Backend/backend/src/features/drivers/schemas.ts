@@ -9,7 +9,16 @@ export const Driver = registry.register(
         verificationStatus: z.enum(["pending", "approved", "rejected"]),
         rejectionReason: z.string().nullable(),
         licenseNumber: z.string(),
-        vehicle: z.object({ type: VehicleType, make: z.string(), model: z.string(), plate: z.string(), color: z.string().nullable() }),
+        licenseExpiry: z.string().nullable(),
+        insuranceExpiry: z.string().nullable(),
+        vehicle: z.object({
+            type: VehicleType,
+            make: z.string(),
+            model: z.string(),
+            plate: z.string(),
+            color: z.string().nullable(),
+            year: z.number().nullable()
+        }),
         isOnline: z.boolean(),
         location: z.object({ lat: z.number(), lng: z.number() }).nullable(),
         submittedAt: z.string()
@@ -42,6 +51,18 @@ export const DriverBody = z.object({
         .toUpperCase()
         .regex(/^[A-Z0-9 -]{6,13}$/, "Enter the registration number, e.g. MH 02 AB 1234."),
     vehicleColor: z.string().trim().max(30).optional(),
+    vehicleYear: z.coerce
+        .number({ message: "Enter the year the vehicle was registered." })
+        .int()
+        .min(2000, "Vehicles registered before 2000 can't be used.")
+        .max(new Date().getFullYear(), "Enter the year the vehicle was registered."),
+    licenseExpiry: z
+        .string({ message: "Enter your licence's expiry date." })
+        .regex(/^\d{4}-\d{2}-\d{2}$/, "Enter your licence's expiry date."),
+    insuranceExpiry: z
+        .string({ message: "Enter your insurance's expiry date." })
+        .regex(/^\d{4}-\d{2}-\d{2}$/, "Enter your insurance's expiry date."),
+    insuranceDoc: z.any().optional().openapi({ type: "string", format: "binary", description: "Vehicle insurance photo or PDF, max 8 MB" }),
     licenseDoc: z
         .any()
         .optional()
@@ -55,12 +76,15 @@ export function toDriver(row: DriverRow | null) {
         verificationStatus: row.verification_status,
         rejectionReason: row.rejection_reason,
         licenseNumber: row.license_number,
+        licenseExpiry: row.license_expiry,
+        insuranceExpiry: row.insurance_expiry,
         vehicle: {
             type: row.vehicle_type,
             make: row.vehicle_make,
             model: row.vehicle_model,
             plate: row.vehicle_plate,
-            color: row.vehicle_color
+            color: row.vehicle_color,
+            year: row.vehicle_year
         },
         isOnline: Boolean(row.is_online),
         location: row.lat != null && row.lng != null ? { lat: row.lat, lng: row.lng } : null,

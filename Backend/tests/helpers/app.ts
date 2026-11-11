@@ -155,10 +155,14 @@ export async function onboard(
         vehicleMake: "Hyundai",
         vehicleModel: "Aura",
         vehiclePlate: "MH 02 TT 9999",
-        vehicleColor: "Grey"
+        vehicleColor: "Grey",
+        vehicleYear: "2022",
+        licenseExpiry: "2099-01-01",
+        insuranceExpiry: "2099-01-01"
     }).forEach(([key, value]) => form.set(key, value));
     form.set("licenseDoc", new Blob([PNG], { type: "image/png" }), "licence.png");
     form.set("rcDoc", new Blob([PNG], { type: "image/png" }), "rc.png");
+    form.set("insuranceDoc", new Blob([PNG], { type: "image/png" }), "insurance.png");
     me = await app.ok("POST", "/onboarding/driver", form);
     assert.equal(me.next, "pending");
     return app;

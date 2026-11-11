@@ -129,6 +129,10 @@ const config = {
         currency: "INR"
     },
     geo: {
+        // Ola Maps is tried first for search, addresses, routes and map tiles (better Indian
+        // addresses and traffic-aware ETAs); OpenStreetMap below is the fallback.
+        olaKey: env.OLA_MAPS_API_KEY || "",
+        olaUrl: env.OLA_MAPS_URL || "https://api.olamaps.io",
         // OpenStreetMap services. The public demo servers are fine for development;
         // self-host or use a commercial provider for production traffic.
         nominatimUrl: env.NOMINATIM_URL || "https://nominatim.openstreetmap.org",

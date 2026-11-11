@@ -9,13 +9,14 @@ export type RideActor = "rider" | "driver" | "admin";
  * impossible regardless of which endpoint asks for it.
  *
  *   requested ─accept─► accepted ─arrive─► arrived ─start(OTP)─► in_progress ─complete─► completed
- *       ▲                  │  └──────────start(OTP)──────────────┘
- *       └──release (driver)┘ (also from arrived)
+ *       ▲                  │                  │
+ *       └──release (driver)┴──────────────────┘
+ *   The OTP is only created when the driver arrives, so a trip can't start before that.
  *   cancel: rider until the trip starts, admin until it ends.
  */
 const TRANSITIONS: Record<RideStatus, Partial<Record<RideStatus, readonly RideActor[]>>> = {
     requested: { accepted: ["driver"], cancelled: ["rider", "admin"] },
-    accepted: { arrived: ["driver"], in_progress: ["driver"], requested: ["driver"], cancelled: ["rider", "admin"] },
+    accepted: { arrived: ["driver"], requested: ["driver"], cancelled: ["rider", "admin"] },
     arrived: { in_progress: ["driver"], requested: ["driver"], cancelled: ["rider", "admin"] },
     in_progress: { completed: ["driver"], cancelled: ["admin"] },
     completed: {},

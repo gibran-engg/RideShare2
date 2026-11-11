@@ -163,15 +163,20 @@ test("full journey: onboarding, admin approval, ride with OTP", async () => {
     assert.ok(requests.rides.some((r: { id: number }) => r.id === ride.id));
     await driver.ok("POST", `/rides/${ride.id}/accept`);
 
-    // Rider sees the driver, their position and the OTP.
+    // Rider sees the driver and their position; the OTP only comes when the driver arrives.
+    const accepted = (await rider.ok("GET", "/rides/active")).ride;
+    assert.equal(accepted.status, "accepted");
+    assert.equal(accepted.otp, null, "no OTP until the driver arrives");
+    assert.deepEqual(accepted.driver.location, { lat: 19.09, lng: 72.91 });
+    assert.equal((await driver.call("POST", `/rides/${ride.id}/start`, { otp: "1234" })).status, 409, "can't start before arriving");
+
+    await driver.ok("POST", `/rides/${ride.id}/arrived`);
     const active = (await rider.ok("GET", "/rides/active")).ride;
-    assert.equal(active.status, "accepted");
     assert.match(active.otp, /^\d{4}$/);
-    assert.deepEqual(active.driver.location, { lat: 19.09, lng: 72.91 });
+    assert.ok(Date.parse(active.otpExpiresAt) > Date.now() + 14 * 60 * 1000, "the OTP lasts 15 minutes");
     const driverView = (await driver.ok("GET", "/rides/active")).ride;
     assert.equal(driverView.otp, null, "the driver never sees the OTP");
 
-    await driver.ok("POST", `/rides/${ride.id}/arrived`);
     const wrong = await driver.call("POST", `/rides/${ride.id}/start`, { otp: active.otp === "0000" ? "1111" : "0000" });
     assert.equal(wrong.status, 400);
     await driver.ok("POST", `/rides/${ride.id}/start`, { otp: active.otp });

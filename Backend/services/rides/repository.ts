@@ -18,7 +18,17 @@ const SELECT_RIDE = `
     LEFT JOIN drivers d ON d.user_id = r.driver_id`;
 
 // Columns a transition may set besides status/timestamps (never user-controlled names).
-type RideColumn = "driver_id" | "accepted_at" | "arrived_at" | "cancelled_by" | "cancel_reason" | "payment_status";
+type RideColumn =
+    | "driver_id"
+    | "accepted_at"
+    | "arrived_at"
+    | "cancelled_by"
+    | "cancel_reason"
+    | "payment_status"
+    | "cancellation_fee"
+    | "otp"
+    | "otp_expires_at"
+    | "otp_attempts";
 
 export function get(id: number): RideRow | null {
     return (db.get().prepare(`${SELECT_RIDE} WHERE r.id = ?`).get(id) as RideRow | undefined) ?? null;
@@ -39,7 +49,11 @@ export interface NewRide {
     distanceKm: number;
     durationMin: number;
     fare: number;
-    otp: string;
+    pricingSegment: "normal" | "peak" | "night";
+    fareMultiplier: number;
+    fareBase: number;
+    fareDistance: number;
+    fareTime: number;
     routeGeometry: [number, number][];
     paymentMethod: PaymentMethod;
 }
@@ -50,8 +64,9 @@ export function insert(ride: NewRide): number {
             .get()
             .prepare(
                 `INSERT INTO rides (rider_id, pickup_name, pickup_lat, pickup_lng, drop_name, drop_lat, drop_lng,
-                                    vehicle_type, distance_km, duration_min, fare, otp, route_geometry, payment_method)
-                 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
+                                    vehicle_type, distance_km, duration_min, fare, otp, route_geometry, payment_method,
+                                    pricing_segment, fare_multiplier, fare_base, fare_distance, fare_time)
+                 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, '', ?, ?, ?, ?, ?, ?, ?)`
             )
             .run(
                 ride.riderId,
@@ -65,9 +80,13 @@ export function insert(ride: NewRide): number {
                 ride.distanceKm,
                 ride.durationMin,
                 ride.fare,
-                ride.otp,
                 JSON.stringify(ride.routeGeometry),
-                ride.paymentMethod
+                ride.paymentMethod,
+                ride.pricingSegment,
+                ride.fareMultiplier,
+                ride.fareBase,
+                ride.fareDistance,
+                ride.fareTime
             ).lastInsertRowid
     );
 }
@@ -90,6 +109,31 @@ export function transition(id: number, version: number, to: RideStatus, set: Par
         .prepare(`UPDATE rides SET ${assignments.join(", ")} WHERE id = ? AND version = ?`)
         .run(...values, id, version);
     return result.changes > 0;
+}
+
+/** A new trip OTP (or a cleared one), with its expiry; bumps the version so both apps refresh. */
+export function setOtp(id: number, otp: string, expiresAt: number | null): void {
+    db.get()
+        .prepare("UPDATE rides SET otp = ?, otp_expires_at = ?, otp_attempts = 0, version = version + 1 WHERE id = ?")
+        .run(otp, expiresAt, id);
+}
+
+/** Counts a wrong OTP entry and returns how many there have been for the current code. */
+export function countOtpAttempt(id: number): number {
+    db.get().prepare("UPDATE rides SET otp_attempts = otp_attempts + 1 WHERE id = ?").run(id);
+    return (db.get().prepare("SELECT otp_attempts FROM rides WHERE id = ?").get(id) as { otp_attempts: number }).otp_attempts;
+}
+
+export function markSos(id: number): void {
+    db.get().prepare("UPDATE rides SET sos_at = COALESCE(sos_at, datetime('now')), version = version + 1 WHERE id = ?").run(id);
+}
+
+export function setShareToken(id: number, token: string): void {
+    db.get().prepare("UPDATE rides SET share_token = COALESCE(share_token, ?) WHERE id = ?").run(token, id);
+}
+
+export function getByShareToken(token: string): RideRow | null {
+    return (db.get().prepare(`${SELECT_RIDE} WHERE r.share_token = ?`).get(token) as RideRow | undefined) ?? null;
 }
 
 export function setPaymentStatus(id: number, status: RidePaymentStatus): void {
@@ -129,16 +173,21 @@ export interface EarningsBucket {
 
 export function earnings(driverId: number): { today: EarningsBucket; week: EarningsBucket; total: EarningsBucket } {
     const conn = db.get();
+    // Completed trips' fares plus cancellation fees from riders who cancelled after the driver arrived.
+    // `ended` is when the ride finished either way; "today" is the day in India.
     const sum = (where: string) =>
         conn
             .prepare(
-                `SELECT COUNT(*) AS trips, COALESCE(SUM(fare), 0) AS amount FROM rides
-                 WHERE driver_id = ? AND status = 'completed' ${where}`
+                `SELECT COALESCE(SUM(status = 'completed'), 0) AS trips,
+                        COALESCE(SUM(CASE WHEN status = 'completed' THEN fare ELSE cancellation_fee END), 0) AS amount
+                 FROM (SELECT status, fare, cancellation_fee, COALESCE(completed_at, cancelled_at) AS ended FROM rides
+                       WHERE driver_id = ? AND (status = 'completed' OR (status = 'cancelled' AND cancellation_fee > 0)))
+                 WHERE 1 = 1 ${where}`
             )
             .get(driverId) as unknown as EarningsBucket;
     return {
-        today: sum("AND date(completed_at) = date('now')"),
-        week: sum("AND completed_at >= datetime('now', '-7 days')"),
+        today: sum("AND date(ended, '+330 minutes') = date('now', '+330 minutes')"),
+        week: sum("AND ended >= datetime('now', '-7 days')"),
         total: sum("")
     };
 }

@@ -20,6 +20,7 @@ export const User = registry.register(
 export const Me = z.object({
     user: User,
     driver: Driver.nullable(),
+    rating: z.object({ average: z.number().nullable(), count: z.number() }),
     next: z.enum(["profile", "verify", "driver", "pending", "rejected", "ready"]),
     devSms: z.string().nullable().optional().openapi({ description: "Development only: the last SMS sent, so the OTP can be read" })
 });

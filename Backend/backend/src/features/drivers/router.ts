@@ -3,6 +3,7 @@ import { AppError } from "../../../../lib/errors.ts";
 import * as drivers from "../../../../services/drivers/service.ts";
 import * as rides from "../../../../services/rides/service.ts";
 import * as users from "../../../../services/users/service.ts";
+import * as ratings from "../../../../services/ratings/service.ts";
 import { requireReady } from "../../core/auth.ts";
 import { createModule } from "../../core/route.ts";
 import { LatLng, Ok } from "../../core/schemas.ts";
@@ -31,8 +32,12 @@ add(
         if (user.role !== "driver") throw new AppError("BAD_REQUEST", "Only drivers add a vehicle.");
         if (!user.phone_verified) throw new AppError("BAD_REQUEST", "Verify your phone number first.");
         const files = (req.files || {}) as Record<string, Express.Multer.File[]>;
-        const { licenseDoc: _l, rcDoc: _r, ...data } = body;
-        drivers.submit(user.id, data, { licenseDoc: saveDocument(files.licenseDoc?.[0]), rcDoc: saveDocument(files.rcDoc?.[0]) });
+        const { licenseDoc: _l, rcDoc: _r, insuranceDoc: _i, ...data } = body;
+        drivers.submit(user.id, data, {
+            licenseDoc: saveDocument(files.licenseDoc?.[0]),
+            rcDoc: saveDocument(files.rcDoc?.[0]),
+            insuranceDoc: saveDocument(files.insuranceDoc?.[0])
+        });
         users.completeOnboarding(user.id);
         return me(user.id);
     }
@@ -88,12 +93,20 @@ add(
     {
         method: "get",
         path: "/driver/earnings",
-        summary: "Today, this week and all time",
+        summary: "Today, this week and all time, plus hours online today and rating",
         tags,
         before: [driverOnly],
-        response: z.object({ earnings: Earnings })
+        response: z.object({
+            earnings: Earnings,
+            hoursOnlineToday: z.number(),
+            rating: z.object({ average: z.number().nullable(), count: z.number() })
+        })
     },
-    ({ user }) => ({ earnings: rides.earnings(user.id) })
+    ({ user }) => ({
+        earnings: rides.earnings(user.id),
+        hoursOnlineToday: Math.round(drivers.secondsOnlineToday(user.id) / 360) / 10,
+        rating: ratings.summary(user.id)
+    })
 );
 
 export default router;

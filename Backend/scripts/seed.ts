@@ -8,6 +8,7 @@ import path from "node:path";
 import config from "../lib/config.ts";
 import * as db from "../db/index.ts";
 import * as drivers from "../services/drivers/service.ts";
+import * as savedPlaces from "../services/saved-places/service.ts";
 import * as users from "../services/users/service.ts";
 import type { PaymentMethod, Point, Role, UserRow, VehicleType } from "../lib/types.ts";
 
@@ -75,6 +76,14 @@ interface Vehicle {
     model: string;
     plate: string;
     color: string;
+    year: number;
+}
+
+/** A date `years` from today, as YYYY-MM-DD (for document expiry dates). */
+function yearsFromNow(years: number): string {
+    const date = new Date();
+    date.setFullYear(date.getFullYear() + years);
+    return date.toISOString().slice(0, 10);
 }
 
 function ensureDriver(user: UserRow, vehicle: Vehicle, status: "approved" | "pending", spot: Point): void {
@@ -87,9 +96,16 @@ function ensureDriver(user: UserRow, vehicle: Vehicle, status: "approved" | "pen
             vehicleMake: vehicle.make,
             vehicleModel: vehicle.model,
             vehiclePlate: vehicle.plate,
-            vehicleColor: vehicle.color
+            vehicleColor: vehicle.color,
+            vehicleYear: vehicle.year,
+            licenseExpiry: yearsFromNow(8),
+            insuranceExpiry: yearsFromNow(1)
         },
-        { licenseDoc: placeholderPdf(`Driving licence ${vehicle.license}`), rcDoc: placeholderPdf(`RC ${vehicle.plate}`) }
+        {
+            licenseDoc: placeholderPdf(`Driving licence ${vehicle.license}`),
+            rcDoc: placeholderPdf(`RC ${vehicle.plate}`),
+            insuranceDoc: placeholderPdf(`Insurance ${vehicle.plate}`)
+        }
     );
     if (status === "approved") {
         db.get()
@@ -194,6 +210,12 @@ function seedHistory(rider: UserRow, driver: UserRow): number {
             continue;
         }
         for (const userId of [rider.id, driver.id]) activity(userId, "ride.completed", rideId, { fare: trip.fare }, trip.daysAgo);
+        // Both sides rated the paid trips, so ratings show up from the start.
+        if (trip.outcome === "paid") {
+            const rate = db.get().prepare("INSERT INTO ride_ratings (ride_id, rater_id, ratee_id, stars, tags) VALUES (?, ?, ?, ?, ?)");
+            rate.run(rideId, rider.id, driver.id, trip.daysAgo > 4 ? 5 : 4, JSON.stringify(["Safe driving", "Polite"]));
+            rate.run(rideId, driver.id, rider.id, 5, JSON.stringify(["On time"]));
+        }
 
         const status = trip.outcome === "paid" ? "succeeded" : "pending";
         const paymentId = Number(
@@ -229,7 +251,7 @@ const rider = ensureUser({ email: "rider@example.test", name: "Asha Rider", phon
 const driver = ensureUser({ email: "driver@example.test", name: "Ravi Driver", phone: "+919800000002", role: "driver" });
 ensureDriver(
     driver,
-    { license: "MH0220190012345", type: "car", make: "Maruti Suzuki", model: "Dzire", plate: "MH 02 AB 1234", color: "White" },
+    { license: "MH0220190012345", type: "car", make: "Maruti Suzuki", model: "Dzire", plate: "MH 02 AB 1234", color: "White", year: 2021 },
     "approved",
     SPOTS.ghatkopar
 );
@@ -237,12 +259,16 @@ ensureDriver(
 const pending = ensureUser({ email: "pending.driver@example.test", name: "Priya Pending", phone: "+919800000003", role: "driver" });
 ensureDriver(
     pending,
-    { license: "MH0320210054321", type: "auto", make: "Bajaj", model: "RE Compact", plate: "MH 03 CD 5678", color: "Green" },
+    { license: "MH0320210054321", type: "auto", make: "Bajaj", model: "RE Compact", plate: "MH 03 CD 5678", color: "Green", year: 2022 },
     "pending",
     SPOTS.vidyavihar
 );
 
 const trips = seedHistory(rider, driver);
+if (!savedPlaces.list(rider.id).length) {
+    savedPlaces.save(rider.id, { label: "Home", ...SPOTS.ghatkopar });
+    savedPlaces.save(rider.id, { label: "Work", ...SPOTS.bkc });
+}
 
 console.log(`
 Seeded demo data:

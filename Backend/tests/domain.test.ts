@@ -19,7 +19,6 @@ test("ride state machine: exactly the documented transitions are legal", () => {
         "requested>cancelled:rider",
         "requested>cancelled:admin",
         "accepted>arrived:driver",
-        "accepted>in_progress:driver",
         "accepted>requested:driver",
         "accepted>cancelled:rider",
         "accepted>cancelled:admin",

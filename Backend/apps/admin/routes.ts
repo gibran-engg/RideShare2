@@ -3,6 +3,8 @@ import express from "express";
 import type { Request } from "express";
 import { AppError } from "../../lib/errors.ts";
 import * as activity from "../../services/activity/service.ts";
+import * as chat from "../../services/chat/service.ts";
+import * as ratings from "../../services/ratings/service.ts";
 import * as audit from "../../lib/audit.ts";
 import config from "../../lib/config.ts";
 import * as drivers from "../../services/drivers/service.ts";
@@ -115,6 +117,8 @@ router.get("/users/:id", (req, res) => {
         items: content.items,
         nextCursor: content.nextCursor,
         riderSummary: rides.riderSummary(user.id),
+        rating: ratings.summary(user.id),
+        ratingsReceived: ratings.received(user.id, 10),
         earnings: user.role === "driver" ? rides.earnings(user.id) : null
     });
 });
@@ -140,7 +144,13 @@ router.get("/rides", (req, res) => {
 router.get("/rides/:id", (req, res) => {
     const ride = rides.get(id(req));
     if (!ride) throw new AppError("NOT_FOUND", "Ride not found.");
-    res.render("ride", { title: `Ride #${ride.id}`, ride, payment: payments.ofRide(ride.id) });
+    res.render("ride", {
+        title: `Ride #${ride.id}`,
+        ride,
+        payment: payments.ofRide(ride.id),
+        messages: chat.forRide(ride.id),
+        ratings: ratings.forRide(ride.id)
+    });
 });
 
 router.post("/rides/:id/cancel", (req, res) => {

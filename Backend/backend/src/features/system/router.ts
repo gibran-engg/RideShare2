@@ -3,6 +3,7 @@ import config from "../../../../lib/config.ts";
 import * as db from "../../../../db/index.ts";
 import * as fare from "../../../../services/rides/fare.ts";
 import * as rides from "../../../../services/rides/service.ts";
+import * as ratings from "../../../../services/ratings/service.ts";
 import { createModule } from "../../core/route.ts";
 
 /** Public endpoints: health check and the settings the apps need before sign-in. */
@@ -52,6 +53,16 @@ add(
             vehicles: z.array(z.object({ type: z.string(), label: z.string(), seats: z.number() })),
             paymentMethods: z.array(z.string()),
             matchRadiusKm: z.number(),
+            pricing: z.object({
+                timeZone: z.string(),
+                current: z.object({ segment: z.string(), label: z.string(), multiplier: z.number() }),
+                segments: z.array(
+                    z.object({ id: z.string(), label: z.string(), multiplier: z.number(), hours: z.array(z.array(z.number())) })
+                )
+            }),
+            otpMinutes: z.number(),
+            cancellationFee: z.number(),
+            ratingTags: z.object({ rider: z.array(z.string()), driver: z.array(z.string()) }),
             map: z.object({ configured: z.boolean(), styleUrl: z.string().nullable(), tileUrl: z.string(), attribution: z.string() })
         })
     },
@@ -66,6 +77,15 @@ add(
         vehicles: fare.VEHICLE_TYPES.map((type) => ({ type, label: fare.RATE_CARD[type].label, seats: fare.RATE_CARD[type].seats })),
         paymentMethods: ["cash", "card", "upi"],
         matchRadiusKm: rides.MATCH_RADIUS_KM,
+        pricing: {
+            timeZone: fare.PRICING_TIME_ZONE,
+            current: (({ id, label, multiplier }) => ({ segment: id, label, multiplier }))(fare.segmentAt()),
+            segments: Object.values(fare.PRICING_SEGMENTS).map(({ id, label, multiplier, hours }) => ({ id, label, multiplier, hours }))
+        },
+        otpMinutes: rides.OTP_TTL_MS / 60000,
+        cancellationFee: rides.CANCELLATION_FEE,
+        // Tags each side can pick when rating the other.
+        ratingTags: { rider: ratings.RIDER_TAGS, driver: ratings.DRIVER_TAGS },
         // Raster tiles drawn by Leaflet (browser) and MapLibre (Android).
         map: {
             configured: config.map.configured,

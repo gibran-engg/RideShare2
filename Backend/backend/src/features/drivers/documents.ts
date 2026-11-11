@@ -6,7 +6,7 @@ import type { NextFunction, Request, Response } from "express";
 import { AppError } from "../../../../lib/errors.ts";
 import config from "../../../../lib/config.ts";
 
-/** Driver licence and RC uploads: photo or PDF, max 8 MB each, content checked against the declared type. */
+/** Driver licence, RC and insurance uploads: photo or PDF, max 8 MB each, content checked against the declared type. */
 
 const MAX_UPLOAD_BYTES = 8 * 1024 * 1024;
 const ALLOWED_TYPES: Record<string, { ext: string; magic: number[] }> = {
@@ -17,7 +17,7 @@ const ALLOWED_TYPES: Record<string, { ext: string; magic: number[] }> = {
 
 const upload = multer({
     storage: multer.memoryStorage(),
-    limits: { fileSize: MAX_UPLOAD_BYTES, files: 2, fields: 20 },
+    limits: { fileSize: MAX_UPLOAD_BYTES, files: 3, fields: 20 },
     fileFilter(req, file, callback) {
         if (!ALLOWED_TYPES[file.mimetype])
             return callback(new AppError("VALIDATION_FAILED", "Documents must be photos (JPG/PNG) or PDF files."));
@@ -25,7 +25,8 @@ const upload = multer({
     }
 }).fields([
     { name: "licenseDoc", maxCount: 1 },
-    { name: "rcDoc", maxCount: 1 }
+    { name: "rcDoc", maxCount: 1 },
+    { name: "insuranceDoc", maxCount: 1 }
 ]);
 
 export function parseUpload(req: Request, res: Response, next: NextFunction): void {

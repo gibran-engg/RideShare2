@@ -7,7 +7,12 @@
     <span class="badge badge-<%= ride.status %>"><%= h.statusLabel(ride.status) %></span>
 </div>
 
+<% if (ride.sos_at) { %>
+<div class="alert alert-error" role="alert">SOS raised on this ride at <%= h.dateTime(ride.sos_at) %>. Contact the rider and driver now.</div>
+<% } %>
+
 <div class="grid grid-main">
+    <div class="stack">
     <section class="card">
         <h2>Trip</h2>
         <dl class="details">
@@ -15,7 +20,8 @@
             <dt>Driver</dt><dd><% if (ride.driver_id) { %><a href="/users/<%= ride.driver_id %>"><%= ride.driver_name %></a> · <%= ride.driver_phone %> · <span class="mono"><%= ride.vehicle_plate %></span><% } else { %>-<% } %></dd>
             <dt>Vehicle</dt><dd><%= h.vehicleLabel(ride.vehicle_type) %></dd>
             <dt>Distance</dt><dd><%= ride.distance_km %> km · ~<%= ride.duration_min %> min</dd>
-            <dt>Fare</dt><dd><strong><%= h.money(ride.fare) %></strong></dd>
+            <dt>Fare</dt><dd><strong><%= h.money(ride.fare) %></strong> · <%= ride.pricing_segment === "normal" ? "Normal pricing" : (ride.pricing_segment === "peak" ? "Peak" : "Late night") + " ×" + ride.fare_multiplier %></dd>
+            <% if (ride.cancellation_fee) { %><dt>Cancellation fee</dt><dd><%= h.money(ride.cancellation_fee) %> (to the driver)</dd><% } %>
             <dt>Requested</dt><dd><%= h.dateTime(ride.requested_at) %></dd>
             <dt>Accepted</dt><dd><%= h.dateTime(ride.accepted_at) %></dd>
             <dt>Arrived</dt><dd><%= h.dateTime(ride.arrived_at) %></dd>
@@ -26,6 +32,34 @@
             <% } %>
         </dl>
     </section>
+
+    <section class="card">
+        <h2>Chat</h2>
+        <% if (!messages.length) { %>
+        <p class="empty">No messages.</p>
+        <% } else { %>
+        <dl class="details">
+            <% for (const message of messages) { %>
+            <dt><%= message.sender_id === ride.rider_id ? "Rider" : "Driver" %> · <%= h.dateTime(message.created_at) %></dt><dd><%= message.body %></dd>
+            <% } %>
+        </dl>
+        <% } %>
+    </section>
+
+    <section class="card">
+        <h2>Ratings</h2>
+        <% if (!ratings.length) { %>
+        <p class="empty">Not rated yet.</p>
+        <% } else { %>
+        <dl class="details">
+            <% for (const rating of ratings) { %>
+            <dt><%= rating.rater_id === ride.rider_id ? "Rider rated driver" : "Driver rated rider" %></dt>
+            <dd><%= "★".repeat(rating.stars) + "☆".repeat(5 - rating.stars) %> <%= JSON.parse(rating.tags || "[]").join(", ") %><%= rating.comment ? " · “" + rating.comment + "”" : "" %></dd>
+            <% } %>
+        </dl>
+        <% } %>
+    </section>
+    </div>
 
     <aside class="stack">
         <section class="card">

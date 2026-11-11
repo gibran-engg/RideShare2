@@ -1,9 +1,11 @@
 import config from "../../lib/config.ts";
 import { AppError } from "../../lib/errors.ts";
 import type { Point, VehicleType } from "../../lib/types.ts";
+import * as ola from "./ola.ts";
 
 /**
- * OpenStreetMap services:
+ * Ola Maps is tried first for search, addresses and routes (see ola.ts). When it isn't configured
+ * or fails, these OpenStreetMap services are used instead:
  *   - Nominatim for place search and reverse geocoding
  *   - OSRM for driving routes (distance, duration, geometry)
  * Both public servers ask for a descriptive User-Agent, light use and caching.
@@ -20,7 +22,7 @@ export interface Route {
     distanceKm: number;
     durationMin: number;
     geometry: [number, number][];
-    source: "osrm" | "estimate";
+    source: "ola" | "osrm" | "estimate";
 }
 
 interface NominatimPlace {
@@ -87,10 +89,25 @@ function shortName(place: NominatimPlace): { name: string; area: string } {
     return { name: first, area: area && area !== first ? area : "" };
 }
 
+/** Centre of the service area (GEO_VIEWBOX), used to bias search when the user's position is unknown. */
+function serviceAreaCentre(): Point {
+    const [lng1, lat1, lng2, lat2] = config.geo.viewbox.split(",").map(Number);
+    return { lat: (lat1! + lat2!) / 2, lng: (lng1! + lng2!) / 2 };
+}
+
 /** Place search, biased to the service area, nearest first when `near` is given. */
 export async function search(query: unknown, near?: Point | null): Promise<Place[]> {
     const q = String(query || "").trim();
     if (q.length < 2) return [];
+
+    if (ola.enabled()) {
+        try {
+            const places = await ola.search(q, isPoint(near) ? near : serviceAreaCentre());
+            if (places.length) return places;
+        } catch (err) {
+            console.error("Ola Maps search failed, using OpenStreetMap:", (err as Error).message);
+        }
+    }
 
     const url = new URL("/search", config.geo.nominatimUrl);
     url.search = new URLSearchParams({
@@ -126,6 +143,14 @@ export async function reverse(point: Point): Promise<Place> {
         lat: point.lat,
         lng: point.lng
     };
+
+    if (ola.enabled()) {
+        try {
+            return await ola.reverse(point);
+        } catch (err) {
+            console.error("Ola Maps reverse geocoding failed, using OpenStreetMap:", (err as Error).message);
+        }
+    }
 
     const url = new URL("/reverse", config.geo.nominatimUrl);
     // Round so nearby pins share a cache entry.
@@ -167,11 +192,22 @@ interface OsrmResponse {
 }
 
 /**
- * Driving route between two points. OSRM models cars; two-wheelers and autos get a duration
- * adjusted for their typical city speed. Falls back to a straight-line estimate if OSRM is down.
+ * Driving route between two points: Ola Maps, then OSRM, then a straight-line estimate if both are down.
  */
 export async function route(from: Point, to: Point, vehicleType: VehicleType = "car"): Promise<Route> {
     if (!isPoint(from) || !isPoint(to)) throw new AppError("VALIDATION_FAILED", "Pickup and drop need valid coordinates.");
+    // Ola and OSRM both model cars; two-wheelers and autos get a duration adjusted for their typical city speed.
+    const speedRatio = AVERAGE_SPEED_KMH.car / (AVERAGE_SPEED_KMH[vehicleType] || AVERAGE_SPEED_KMH.car);
+
+    if (ola.enabled()) {
+        try {
+            const best = await ola.route(from, to);
+            // Ola's durations already include traffic, so no traffic factor here.
+            return { ...best, durationMin: Math.max(2, Math.round(best.durationMin * speedRatio)), source: "ola" };
+        } catch (err) {
+            console.error("Ola Maps routing failed, using OpenStreetMap:", (err as Error).message);
+        }
+    }
 
     const url = new URL(
         `/route/v1/driving/${from.lng.toFixed(6)},${from.lat.toFixed(6)};${to.lng.toFixed(6)},${to.lat.toFixed(6)}`,
@@ -185,8 +221,6 @@ export async function route(from: Point, to: Point, vehicleType: VehicleType = "
         if (data.code !== "Ok" || !best) throw new Error(data.code || "no route");
 
         const distanceKm = best.distance / 1000;
-        // OSRM's demo profile is car-only; scale for other vehicles.
-        const speedRatio = AVERAGE_SPEED_KMH.car / (AVERAGE_SPEED_KMH[vehicleType] || AVERAGE_SPEED_KMH.car);
         return {
             distanceKm: Math.max(0.1, Math.round(distanceKm * 10) / 10),
             durationMin: Math.max(2, Math.round((best.duration / 60) * speedRatio * config.geo.trafficFactor)),

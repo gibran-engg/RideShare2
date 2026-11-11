@@ -1,6 +1,6 @@
 import crypto from "node:crypto";
 import * as db from "../../db/index.ts";
-import { assertTransition } from "./state.ts";
+import { assertTransition, isActive } from "./state.ts";
 import type { RideActor } from "./state.ts";
 import { AppError } from "../../lib/errors.ts";
 import { bus } from "../../lib/events.ts";
@@ -13,9 +13,17 @@ import * as geo from "../places/service.ts";
 import * as payments from "../payments/service.ts";
 import * as sms from "../../lib/sms.ts";
 import * as audit from "../../lib/audit.ts";
+import config from "../../lib/config.ts";
+import * as chat from "../chat/repository.ts";
 
 // Drivers only see requests whose pickup is within this distance of them.
 export const MATCH_RADIUS_KM = 12;
+// The trip OTP is created when the driver arrives and works for this long.
+export const OTP_TTL_MS = 15 * 60 * 1000;
+// Wrong entries allowed per code; after that a new code is sent to the rider.
+export const MAX_OTP_ATTEMPTS = 3;
+// Charged (to the driver's benefit) when a rider cancels after the driver has arrived, in rupees.
+export const CANCELLATION_FEE = 30;
 
 export const get = repo.get;
 export const list = repo.list;
@@ -56,25 +64,39 @@ export interface FareOption {
     distanceKm: number;
     durationMin: number;
     fare: number;
+    breakdown: fare.FareQuote;
 }
 
-/** Route plus fare and ETA for every vehicle type. */
-export async function estimate(pickupInput: LocationInput | null | undefined, dropInput: LocationInput | null | undefined) {
+/** Route plus fare (with the current pricing segment) and ETA for every vehicle type. */
+export async function estimate(
+    pickupInput: LocationInput | null | undefined,
+    dropInput: LocationInput | null | undefined,
+    at: Date = new Date()
+) {
     const { pickup, drop } = resolveTrip(pickupInput, dropInput);
     const carRoute = await geo.route(pickup, drop, "car");
     const options = fare.VEHICLE_TYPES.map((type): FareOption => {
         const speedRatio = geo.AVERAGE_SPEED_KMH.car / geo.AVERAGE_SPEED_KMH[type];
         const durationMin = Math.max(2, Math.round(carRoute.durationMin * speedRatio));
+        const breakdown = fare.quote(type, carRoute.distanceKm, durationMin, at);
         return {
             type,
             label: fare.RATE_CARD[type].label,
             seats: fare.RATE_CARD[type].seats,
             distanceKm: carRoute.distanceKm,
             durationMin,
-            fare: fare.calculate(type, carRoute.distanceKm, durationMin)
+            fare: breakdown.fare,
+            breakdown
         };
     });
-    return { pickup, drop, route: carRoute, options };
+    const segment = fare.segmentAt(at);
+    return {
+        pickup,
+        drop,
+        route: carRoute,
+        options,
+        pricing: { segment: segment.id, label: segment.label, multiplier: segment.multiplier }
+    };
 }
 
 /** A ride the given user is part of, or 404 (never reveal other people's rides). */
@@ -123,10 +145,9 @@ export async function request(riderId: number, input: RideRequest): Promise<Ride
     if (!fare.isVehicleType(input.vehicleType)) throw new AppError("VALIDATION_FAILED", "Please choose a vehicle type.");
     const paymentMethod = input.paymentMethod ?? "cash";
 
-    // Price is always computed on the server, never taken from the app.
+    // Price is always computed on the server, never taken from the app. The pricing segment is fixed now.
     const quote = await estimate(pickup, drop);
     const option = quote.options.find((item) => item.type === input.vehicleType)!;
-    const otp = crypto.randomInt(0, 10_000).toString().padStart(4, "0");
 
     const rideId = db.transaction(() => {
         if (repo.activeFor("rider_id", riderId)) throw new AppError("ACTIVE_RIDE_EXISTS", "You already have a ride in progress.");
@@ -138,7 +159,11 @@ export async function request(riderId: number, input: RideRequest): Promise<Ride
             distanceKm: option.distanceKm,
             durationMin: option.durationMin,
             fare: option.fare,
-            otp,
+            pricingSegment: option.breakdown.segment,
+            fareMultiplier: option.breakdown.multiplier,
+            fareBase: option.breakdown.base,
+            fareDistance: option.breakdown.distanceCharge,
+            fareTime: option.breakdown.timeCharge,
             routeGeometry: quote.route.geometry,
             paymentMethod
         });
@@ -187,7 +212,7 @@ export function accept(rideId: number, driverId: number): RideRow {
     sms.send({
         userId: ride.rider_id,
         phone: ride.rider_phone,
-        message: `${ride.driver_name} is on the way in a ${[ride.vehicle_color, ride.vehicle_make, ride.vehicle_model].filter(Boolean).join(" ")} (${ride.vehicle_plate}). Share OTP ${ride.otp} to start your trip.`
+        message: `${ride.driver_name} is on the way in a ${[ride.vehicle_color, ride.vehicle_make, ride.vehicle_model].filter(Boolean).join(" ")} (${ride.vehicle_plate}). You'll get your trip OTP when they arrive.`
     });
     bus.emit("ride.accepted", ref(ride, driverId));
     return ride;
@@ -199,24 +224,59 @@ function driversRide(rideId: number, driverId: number): RideRow {
     return ride;
 }
 
-export function arrive(rideId: number, driverId: number): RideRow {
-    const ride = move(driversRide(rideId, driverId), "arrived", "driver");
+/** A fresh 4-digit trip OTP for a ride whose driver has arrived, valid for OTP_TTL_MS. Only the rider sees it. */
+function issueOtp(ride: RideRow, actorId: number): RideRow {
+    const otp = crypto.randomInt(0, 10_000).toString().padStart(4, "0");
+    repo.setOtp(ride.id, otp, Date.now() + OTP_TTL_MS);
+    const updated = repo.get(ride.id)!;
     sms.send({
         userId: ride.rider_id,
         phone: ride.rider_phone,
-        message: `Your driver ${ride.driver_name} has arrived at ${ride.pickup_name} (${ride.vehicle_plate}).`
+        message: `Your RideShare trip OTP is ${otp}. Share it with your driver (${ride.vehicle_plate}) to start the trip. It expires in 15 minutes.`
     });
-    bus.emit("ride.arrived", ref(ride, driverId));
-    return ride;
+    bus.emit("ride.otp_issued", ref(updated, actorId));
+    return updated;
+}
+
+export function otpExpired(ride: RideRow, now = Date.now()): boolean {
+    return !ride.otp || ride.otp_expires_at == null || ride.otp_expires_at <= now;
+}
+
+export function arrive(rideId: number, driverId: number): RideRow {
+    const arrived = move(driversRide(rideId, driverId), "arrived", "driver");
+    sms.send({
+        userId: arrived.rider_id,
+        phone: arrived.rider_phone,
+        message: `Your driver ${arrived.driver_name} has arrived at ${arrived.pickup_name} (${arrived.vehicle_plate}).`
+    });
+    bus.emit("ride.arrived", ref(arrived, driverId));
+    // The OTP is created now, not at booking, so it can't be shared or guessed before the driver is there.
+    return issueOtp(arrived, driverId);
+}
+
+/** The rider asks for a new code (the old one expired, or they want a fresh one). */
+export function refreshOtp(rideId: number, riderId: number): RideRow {
+    const ride = getForParticipant(rideId, riderId);
+    if (ride.rider_id !== riderId) throw new AppError("RIDE_NOT_FOUND", "Ride not found.");
+    if (ride.status !== "arrived") throw new AppError("RIDE_STATE_CONFLICT", "You'll get an OTP when your driver arrives.");
+    return issueOtp(ride, riderId);
 }
 
 export function start(rideId: number, driverId: number, otp: unknown): RideRow {
     const current = driversRide(rideId, driverId);
+    if (current.status !== "arrived") throw new AppError("RIDE_STATE_CONFLICT", 'Tap "I\'ve arrived" first; the rider gets the OTP then.');
+    if (otpExpired(current)) {
+        throw new AppError("OTP_EXPIRED", 'The rider\'s OTP expired. Ask them to tap "New code" in their app.');
+    }
     const given = String(otp ?? "").trim();
     if (!/^\d{4}$/.test(given) || !crypto.timingSafeEqual(Buffer.from(given), Buffer.from(current.otp))) {
+        if (repo.countOtpAttempt(current.id) >= MAX_OTP_ATTEMPTS) {
+            issueOtp(current, driverId);
+            throw new AppError("OTP_INVALID", "Too many wrong tries. The rider has been sent a new code; ask them for it.");
+        }
         throw new AppError("OTP_INVALID", "That OTP doesn't match. Ask the rider for the 4-digit code in their app.");
     }
-    const ride = move(current, "in_progress", "driver");
+    const ride = move(current, "in_progress", "driver", { otp: "", otp_expires_at: null });
     bus.emit("ride.started", ref(ride, driverId));
     return ride;
 }
@@ -260,7 +320,15 @@ export function cancel(rideId: number, { by, userId, reason = null }: { by: Ride
         return released;
     }
 
-    const cancelled = move(ride, "cancelled", by, { cancelled_by: by, cancel_reason: reason });
+    // A rider who cancels after the driver has arrived pays a small fee to the driver.
+    const fee = by === "rider" && ride.status === "arrived" ? CANCELLATION_FEE : 0;
+    const cancelled = move(ride, "cancelled", by, {
+        cancelled_by: by,
+        cancel_reason: reason,
+        cancellation_fee: fee,
+        otp: "",
+        otp_expires_at: null
+    });
     if (by === "admin") {
         audit.log(userId, "ride.cancel", "ride", rideId, { reason });
         sms.send({ userId: ride.rider_id, phone: ride.rider_phone, message: `Your ride #${rideId} was cancelled by RideShare support.` });
@@ -268,8 +336,63 @@ export function cancel(rideId: number, { by, userId, reason = null }: { by: Ride
     if (ride.driver_id) {
         sms.send({ userId: ride.driver_id, phone: ride.driver_phone, message: `Ride #${rideId} was cancelled.` });
     }
-    bus.emit("ride.cancelled", { ...ref(cancelled, userId), by, reason });
+    bus.emit("ride.cancelled", { ...ref(cancelled, userId), by, reason, fee });
     return cancelled;
+}
+
+/**
+ * SOS from the rider or driver during a ride: recorded on the ride (admins see it), logged, and
+ * support is alerted. The app also offers to call the emergency number 112.
+ */
+export function sos(rideId: number, userId: number): RideRow {
+    const ride = getForParticipant(rideId, userId);
+    if (!isActive(ride.status) || ride.status === "requested") throw new AppError("RIDE_STATE_CONFLICT", "SOS is available during a ride.");
+    repo.markSos(ride.id);
+    const who =
+        ride.rider_id === userId ? `rider ${ride.rider_name} (${ride.rider_phone})` : `driver ${ride.driver_name} (${ride.driver_phone})`;
+    sms.send({
+        userId: null,
+        phone: "support",
+        message: `SOS on ride #${ride.id} from ${who}. Driver location: ${ride.driver_lat}, ${ride.driver_lng}. Vehicle ${ride.vehicle_plate}.`
+    });
+    audit.log(userId, "ride.sos", "ride", ride.id);
+    const updated = repo.get(ride.id)!;
+    bus.emit("ride.sos", ref(updated, userId));
+    return updated;
+}
+
+/** A link the rider can send to family or friends to follow the trip live (no sign-in needed). */
+export function shareLink(rideId: number, riderId: number): string {
+    const ride = getForParticipant(rideId, riderId);
+    if (ride.rider_id !== riderId) throw new AppError("RIDE_NOT_FOUND", "Ride not found.");
+    if (!isActive(ride.status)) throw new AppError("RIDE_STATE_CONFLICT", "Only an ongoing ride can be shared.");
+    repo.setShareToken(ride.id, crypto.randomBytes(18).toString("base64url"));
+    const token = repo.get(ride.id)!.share_token!;
+    bus.emit("ride.shared", ref(ride, riderId));
+    return `${config.urls.web}/track/${token}`;
+}
+
+/** What a shared link shows: the trip and the driver's live position, never phone numbers or the OTP. */
+export function sharedRide(token: string) {
+    const ride = token ? repo.getByShareToken(token) : null;
+    if (!ride) throw new AppError("RIDE_NOT_FOUND", "This trip link isn't valid.");
+    const active = isActive(ride.status);
+    return {
+        status: ride.status,
+        riderFirstName: (ride.rider_name || "").split(" ")[0] || null,
+        pickup: { name: ride.pickup_name, lat: ride.pickup_lat, lng: ride.pickup_lng },
+        drop: { name: ride.drop_name, lat: ride.drop_lat, lng: ride.drop_lng },
+        driver: ride.driver_id
+            ? {
+                  name: ride.driver_name,
+                  vehicle: [ride.vehicle_color, ride.vehicle_make, ride.vehicle_model].filter(Boolean).join(" "),
+                  plate: ride.vehicle_plate,
+                  location:
+                      active && ride.driver_lat != null && ride.driver_lng != null ? { lat: ride.driver_lat, lng: ride.driver_lng } : null
+              }
+            : null,
+        updatedAt: new Date().toISOString()
+    };
 }
 
 /** Rides a rider took (role rider) or trips a driver made (role driver), newest first. */
@@ -289,6 +412,9 @@ export function fingerprint(userId: number): string {
     // A rider with an active ride also follows the driver's position.
     const active = activeForRider(userId);
     if (active && active.driver_id) parts.push(active.driver_lat, active.driver_lng);
+    // New chat messages on the user's current ride.
+    const current = active || activeForDriver(userId);
+    if (current) parts.push(chat.lastId(current.id));
 
     const driver = drivers.get(userId);
     if (driver) {

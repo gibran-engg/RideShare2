@@ -41,9 +41,12 @@ function makeUser(role: Role, { vehicleType = "car" as VehicleType, at = GHATKOP
                 vehicleType,
                 vehicleMake: "Tata",
                 vehicleModel: "Nexon",
-                vehiclePlate: `MH 01 ZZ ${1000 + counter}`
+                vehiclePlate: `MH 01 ZZ ${1000 + counter}`,
+                vehicleYear: 2022,
+                licenseExpiry: "2099-01-01",
+                insuranceExpiry: "2099-01-01"
             },
-            { licenseDoc: "x.pdf", rcDoc: "y.pdf" }
+            { licenseDoc: "x.pdf", rcDoc: "y.pdf", insuranceDoc: "z.pdf" }
         );
         db.get().prepare("UPDATE drivers SET verification_status = 'approved' WHERE user_id = ?").run(user.id);
         drivers.setLocation(user.id, at);
@@ -52,10 +55,13 @@ function makeUser(role: Role, { vehicleType = "car" as VehicleType, at = GHATKOP
     return users.getById(user.id)!;
 }
 
+// 13:00 in India (07:30 UTC): normal pricing.
+const NOON_IST = new Date("2026-11-11T07:30:00Z");
+
 test("fares respect the minimum and grow with distance", () => {
-    assert.equal(fare.calculate("bike", 0.5, 3), fare.RATE_CARD.bike.minimum);
-    assert.ok(fare.calculate("car", 20, 50) > fare.calculate("car", 5, 15));
-    assert.ok(fare.calculate("car", 10, 25) > fare.calculate("bike", 10, 25));
+    assert.equal(fare.calculate("bike", 0.5, 3, NOON_IST), fare.RATE_CARD.bike.minimum);
+    assert.ok(fare.calculate("car", 20, 50, NOON_IST) > fare.calculate("car", 5, 15, NOON_IST));
+    assert.ok(fare.calculate("car", 10, 25, NOON_IST) > fare.calculate("bike", 10, 25, NOON_IST));
 });
 
 test("routing falls back to a straight-line estimate when OSRM is unreachable", async () => {
@@ -121,9 +127,11 @@ test("ride lifecycle with OTP and earnings", async () => {
 
     rides.accept(ride.id, driver.id);
     assert.throws(() => rides.complete(ride.id, driver.id), /can't be updated/);
-    rides.arrive(ride.id, driver.id);
+    assert.throws(() => rides.start(ride.id, driver.id, "1234"), /arrived/);
+    const arrived = rides.arrive(ride.id, driver.id);
+    assert.match(arrived.otp, /^\d{4}$/);
     assert.throws(() => rides.start(ride.id, driver.id, "12345"), /doesn't match/);
-    rides.start(ride.id, driver.id, ride.otp);
+    rides.start(ride.id, driver.id, arrived.otp);
     assert.throws(() => rides.cancel(ride.id, { by: "rider", userId: rider.id }), /no longer be cancelled/);
     const done = rides.complete(ride.id, driver.id);
     assert.equal(done.status, "completed");

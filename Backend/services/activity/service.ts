@@ -58,7 +58,13 @@ const MAPPERS: { [K in DomainEventName]?: (e: DomainEvents[K]) => Entry[] } = {
         ...rideEntries("ride.driver_released", e),
         { userId: e.previousDriverId, type: "ride.released", entityType: "ride", entityId: e.rideId, metadata: { by: "self" } }
     ],
-    "ride.cancelled": (e) => rideEntries("ride.cancelled", e, { cancelledBy: e.by, reason: e.reason }),
+    "ride.cancelled": (e) => rideEntries("ride.cancelled", e, { cancelledBy: e.by, reason: e.reason, fee: e.fee }),
+    "ride.otp_issued": (e) => [{ userId: e.riderId, type: "ride.otp_issued", entityType: "ride", entityId: e.rideId }],
+    "ride.rated": (e) => [
+        { userId: e.actorId!, type: "ride.rated", entityType: "ride", entityId: e.rideId, metadata: { stars: e.stars, rateeId: e.rateeId } }
+    ],
+    "ride.sos": (e) => rideEntries("ride.sos", e),
+    "ride.shared": (e) => [{ userId: e.riderId, type: "ride.shared", entityType: "ride", entityId: e.rideId }],
     "payment.updated": (e) =>
         rideEntries(
             `payment.${e.status}`,
